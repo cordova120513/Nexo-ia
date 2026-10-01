@@ -33,23 +33,12 @@ const sectionVariants: Variants = {
 export default function Home() {
   return (
     <div className="relative min-h-screen text-slate-100 selection:bg-cyan-400 selection:text-slate-950 font-sans antialiased overflow-x-hidden bg-slate-950">
-      {/* =========================================================================
-          FONDO PRINCIPAL CON hero-bg.jpg (PANTALLA COMPLETA, COBERTURA TOTAL Y EFECTO FIJO)
-          Overlay refinado SaaS con gradiente en tonos slate/zinc para máxima legibilidad y estética limpia
-         ========================================================================= */}
-      <div className="fixed inset-0 -z-50 pointer-events-none bg-cover bg-center bg-no-repeat bg-fixed">
-        <Image
-          src="/images/hero-bg.jpg"
-          alt="NEXO.IA Core Background"
-          fill
-          priority
-          unoptimized
-          sizes="100vw"
-          className="object-cover object-center"
-        />
-        {/* Capa SaaS suave: tonos slate profundos que suavizan los contrastes y otorgan aspecto premium */}
-        <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-[2px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-900/60 to-slate-950/90" />
+      {/* Fondo SaaS Premium: Gradientes sutiles y malla de luz cyan/azul sin edificios corporativos */}
+      <div className="fixed inset-0 -z-50 pointer-events-none overflow-hidden bg-slate-950">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[600px] bg-gradient-to-b from-cyan-500/10 via-sky-500/5 to-transparent rounded-full blur-[140px]" />
+        <div className="absolute top-[35%] -left-[200px] w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[160px]" />
+        <div className="absolute top-[60%] -right-[200px] w-[600px] h-[600px] bg-cyan-600/10 rounded-full blur-[160px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:32px_32px] opacity-25" />
       </div>
 
       {/* Barra de Navegación Glassmorphic */}

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
 import GoogleButton from '@/components/auth/GoogleButton';
@@ -48,10 +49,14 @@ export default function Footer() {
       {/* Footer Links & Derechos */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-slate-800/80 text-xs text-slate-400">
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 font-bold text-base text-white">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/25">
-              <Sparkles className="h-4 w-4" />
-            </div>
+          <Link href="/" className="flex items-center gap-2.5 font-bold text-base text-white">
+            <Image
+              src="/favicon.png"
+              alt="NEXO.IA Logo"
+              width={28}
+              height={28}
+              className="object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]"
+            />
             <span>NEXO<span className="text-cyan-400">.IA</span></span>
           </Link>
           <span className="text-slate-700">|</span>

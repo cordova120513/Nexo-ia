@@ -13,111 +13,190 @@ const metricBadges = [
   { icon: Activity, label: 'Disponibilidad Continua', value: '99.98% SLA' },
 ];
 
-// ── Imágenes PyME reales ──────────────────────────────────────────────────
-const pymeImages = [
-  { src: '/images/empresa1.jpeg', label: 'Restaurante & Café', badge: 'Automatización de pedidos' },
-  { src: '/images/empresa2.jpeg', label: 'Comercio Local', badge: 'Control de inventario IA' },
-  { src: '/images/empresa3.jpeg', label: 'Tienda de Moda', badge: 'Analítica de ventas live' },
+// ── Imágenes PyME reales de NEXO.IA ─────────────────────────────────────────
+const pymeBusinesses = [
+  {
+    id: 'cafe',
+    src: '/images/pyme-cafe.jpg',
+    name: 'Cafetería & Restaurante Local',
+    category: 'Gastronomía y Hospitalidad',
+    badge: 'Atención WhatsApp IA 24/7',
+    metric: '+42% pedidos digitales',
+    highlight: 'Toma pedidos automáticamente, envía menú interactivo y gestiona comandas al instante.',
+  },
+  {
+    id: 'ropa',
+    src: '/images/pyme-ropa.jpeg',
+    name: 'Boutique & Comercio de Moda',
+    category: 'Retail y Tiendas Físicas',
+    badge: 'Control de Inventario IA',
+    metric: '-85% tiempo en inventarios',
+    highlight: 'Alertas predictivas de stock bajo y analítica en tiempo real del ticket promedio.',
+  },
+  {
+    id: 'horno',
+    src: '/images/pyme-horno.jpeg',
+    name: 'Panadería & Alimentos Artesanales',
+    category: 'Producción Diaria y Mostrador',
+    badge: 'Predicción de Demanda',
+    metric: '-30% merma de producción',
+    highlight: 'Calcula producción óptima diaria reduciendo desperdicios y maximizando margen.',
+  },
+  {
+    id: 'taller',
+    src: '/images/pyme-taller.jpeg',
+    name: 'Taller & Fabricación Local',
+    category: 'Manufactura y Servicios',
+    badge: 'Cotizador Instantáneo',
+    metric: 'Cotizaciones en < 2 min',
+    highlight: 'Genera cotizaciones técnicas y presupuestos detallados a clientes sin demoras.',
+  },
+  {
+    id: 'invernadero',
+    src: '/images/pyme-invernadero.jpeg',
+    name: 'Invernadero & Agro PyME',
+    category: 'Cultivo e Innovación Local',
+    badge: 'Telemetría Inteligente',
+    metric: 'Monitoreo 24/7 sin fallas',
+    highlight: 'Supervisión continua con alertas preventivas automáticas directamente al móvil.',
+  },
 ];
 
-// ── Showcase flotante 3D con crossfade ───────────────────────────────────
-function PyMEShowcase() {
-  const [current, setCurrent] = useState(0);
+// ── Showcase PyME inmersivo y responsivo ────────────────────────────────────
+function PyMEInteractiveShowcase() {
+  const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => setCurrent((c) => (c + 1) % pymeImages.length), 4000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => {
+      setActiveIdx((prev) => (prev + 1) % pymeBusinesses.length);
+    }, 5000);
+    return () => clearInterval(timer);
   }, []);
 
-  const img = pymeImages[current];
+  const activePyme = pymeBusinesses[activeIdx];
 
   return (
-    <motion.div
-      animate={{ y: [0, -15, 0] }}
-      transition={{ repeat: Infinity, duration: 6, ease: 'easeInOut' }}
-      className="absolute -right-8 lg:right-4 top-20 lg:top-12 w-72 sm:w-[360px] lg:w-[440px] pointer-events-none -z-10 select-none"
-    >
-      {/* Anillo de resplandor exterior */}
-      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-cyan-400/20 via-sky-400/10 to-transparent blur-2xl scale-110" />
-
-      {/* Tarjeta principal glassmorphism */}
-      <div className="relative rounded-3xl border border-cyan-400/25 bg-slate-900/70 backdrop-blur-xl overflow-hidden shadow-[0_30px_80px_-10px_rgba(34,230,214,0.35)]">
-
-        {/* Imagen con crossfade */}
-        <div className="relative w-full h-64 sm:h-72 lg:h-80 overflow-hidden">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={img.src}
-              initial={{ opacity: 0, scale: 1.04 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.97 }}
-              transition={{ duration: 0.8, ease: 'easeInOut' }}
-              className="absolute inset-0"
+    <div className="w-full max-w-5xl mt-14">
+      {/* Selector de pestañas PyME */}
+      <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+        {pymeBusinesses.map((pyme, idx) => {
+          const isSelected = idx === activeIdx;
+          return (
+            <button
+              key={pyme.id}
+              onClick={() => setActiveIdx(idx)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 flex items-center gap-2 cursor-pointer ${
+                isSelected
+                  ? 'bg-gradient-to-r from-cyan-500/20 to-teal-500/20 border border-cyan-400/80 text-cyan-200 shadow-[0_0_20px_rgba(34,230,214,0.3)]'
+                  : 'bg-slate-900/60 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+              }`}
             >
-              <Image
-                src={img.src}
-                alt={img.label}
-                fill
-                unoptimized
-                sizes="(max-width: 640px) 288px, (max-width: 1024px) 360px, 440px"
-                className="object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
-            </motion.div>
-          </AnimatePresence>
-
-          {/* Badge rotativo */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`badge-${current}`}
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 12 }}
-              transition={{ duration: 0.4 }}
-              className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/85 backdrop-blur-md border border-cyan-400/30 text-[10px] font-bold text-cyan-300"
-            >
-              <TrendingUp className="w-3 h-3" />
-              {img.badge}
-            </motion.div>
-          </AnimatePresence>
-
-          {/* Indicadores */}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-            {pymeImages.map((_, i) => (
-              <div
-                key={i}
-                className={`h-1 rounded-full transition-all duration-500 ${
-                  i === current ? 'w-5 bg-cyan-400' : 'w-1.5 bg-slate-600'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Footer de la tarjeta */}
-        <div className="px-4 py-3 flex items-center justify-between border-t border-slate-700/50">
-          <div className="flex items-center gap-2">
-            <Store className="w-3.5 h-3.5 text-cyan-400" />
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={`label-${current}`}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.3 }}
-                className="text-xs font-semibold text-slate-200"
-              >
-                {img.label}
-              </motion.span>
-            </AnimatePresence>
-          </div>
-          <span className="text-[10px] font-mono text-emerald-400 font-bold">IA Activa ✦</span>
-        </div>
+              <Store className={`w-3.5 h-3.5 ${isSelected ? 'text-cyan-300' : 'text-slate-500'}`} />
+              <span>{pyme.name.split(' ')[0]}</span>
+              {isSelected && (
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Sombra de profundidad */}
-      <div className="absolute -bottom-3 left-4 right-4 h-8 bg-cyan-400/10 blur-xl rounded-full" />
-    </motion.div>
+      {/* Tarjeta principal con la foto real de la PyME */}
+      <div className="relative rounded-3xl border border-cyan-500/30 bg-slate-900/80 backdrop-blur-2xl overflow-hidden shadow-[0_25px_70px_-15px_rgba(34,230,214,0.25)]">
+        {/* Resplandor superior interior */}
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent" />
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+          {/* Columna Izquierda: Información de impacto del negocio */}
+          <div className="lg:col-span-5 p-6 sm:p-8 flex flex-col justify-between text-left order-2 lg:order-1">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 text-xs font-semibold mb-4">
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>{activePyme.category}</span>
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activePyme.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    {activePyme.name}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-300 leading-relaxed">
+                    {activePyme.highlight}
+                  </p>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-slate-800">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Flujo Activo</div>
+                  <div className="text-xs font-bold text-cyan-300 mt-0.5 truncate">{activePyme.badge}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Resultado PyME</div>
+                  <div className="text-xs font-bold text-emerald-400 mt-0.5 truncate">{activePyme.metric}</div>
+                </div>
+              </div>
+
+              {/* Barra de progreso de auto-play */}
+              <div className="flex gap-1.5 mt-5">
+                {pymeBusinesses.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveIdx(i)}
+                    className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-800 cursor-pointer"
+                  >
+                    <div
+                      className={`h-full transition-all duration-500 ${
+                        i === activeIdx ? 'w-full bg-cyan-400' : 'w-0'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Columna Derecha: Foto real de la PyME en alta resolución */}
+          <div className="lg:col-span-7 relative h-64 sm:h-80 lg:h-96 w-full overflow-hidden order-1 lg:order-2 bg-slate-950">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activePyme.src}
+                initial={{ opacity: 0, scale: 1.05 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.7, ease: 'easeInOut' }}
+                className="absolute inset-0"
+              >
+                <Image
+                  src={activePyme.src}
+                  alt={activePyme.name}
+                  fill
+                  unoptimized
+                  sizes="(max-width: 1024px) 100vw, 60vw"
+                  className="object-cover"
+                />
+                {/* Degradado sobre la imagen para contraste estético */}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent lg:bg-gradient-to-r lg:from-slate-900/90 lg:via-transparent lg:to-transparent" />
+              </motion.div>
+            </AnimatePresence>
+
+            {/* Chip de estado en vivo sobre la imagen */}
+            <div className="absolute top-4 right-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-950/85 backdrop-blur-md border border-cyan-400/40 shadow-lg text-[11px] font-bold text-cyan-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>PyME Digitalizada</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -137,9 +216,6 @@ export default function Hero() {
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[450px] bg-[#22E6D6]/15 rounded-full blur-[140px] pointer-events-none -z-10" />
       <div className="absolute top-1/3 left-1/4 w-80 h-80 bg-blue-600/20 rounded-full blur-[120px] pointer-events-none -z-10" />
       <div className="absolute top-1/3 right-1/4 w-80 h-80 bg-cyan-500/15 rounded-full blur-[120px] pointer-events-none -z-10" />
-
-      {/* Showcase PyME flotante */}
-      <PyMEShowcase />
 
       {/* Contenido Hero */}
       <motion.div style={{ y: yText }} className="relative z-10 flex flex-col items-center">
@@ -212,6 +288,16 @@ export default function Hero() {
             <span>Conoce nuestra consultoría</span>
             <ArrowRight className="w-4 h-4 text-cyan-400 group-hover:translate-x-1.5 transition-transform" />
           </motion.a>
+        </motion.div>
+
+        {/* Showcase de Casos Reales PyME con Imágenes Auténticas */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springTransition, delay: 0.38 }}
+          className="w-full flex justify-center"
+        >
+          <PyMEInteractiveShowcase />
         </motion.div>
 
         {/* Tarjeta Núcleo IA Flotante */}

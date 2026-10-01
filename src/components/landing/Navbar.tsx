@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Menu, X, ArrowUpRight, LogIn, UserPlus, Sparkles } from 'lucide-react';
+import { Menu, X, ArrowUpRight, LogIn, UserPlus } from 'lucide-react';
 
 const springTransition = { type: 'spring' as const, stiffness: 260, damping: 20 };
 
@@ -48,20 +48,19 @@ export default function Navbar() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         {/* Brand Logo */}
         <Link href="/" className="group flex items-center gap-3">
-          {/* Logo: favicon.png oficial con glow cyan al hover */}
+          {/* Logo oficial NEXO.IA */}
           <motion.div
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.95 }}
             transition={springTransition}
-            className="relative flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-[#22E6D6]/10 border border-[#22E6D6]/30 shadow-[0_0_18px_rgba(34,230,214,0.22)] group-hover:border-[#22E6D6]/70 group-hover:shadow-[0_0_28px_rgba(34,230,214,0.5)] transition-all overflow-hidden"
+            className="relative flex items-center justify-center"
           >
             <Image
               src="/favicon.png"
               alt="NEXO.IA Logo"
-              width={42}
-              height={42}
-              className="object-contain"
-              unoptimized
+              width={45}
+              height={45}
+              className="object-contain drop-shadow-[0_0_12px_rgba(6,182,212,0.6)]"
             />
           </motion.div>
 
