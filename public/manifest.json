@@ -1,0 +1,32 @@
+{
+  "name": "NEXO.IA — Consultoría e Inteligencia Artificial para PyMEs",
+  "short_name": "NEXO.IA",
+  "description": "Plataforma de automatización e inteligencia artificial para pequeñas y medianas empresas.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#050B1F",
+  "theme_color": "#22E6D6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["business", "productivity", "finance"],
+  "shortcuts": [
+    {
+      "name": "Registrar Venta",
+      "short_name": "Venta",
+      "description": "Registra una nueva venta rápidamente",
+      "url": "/dashboard"
+    },
+    {
+      "name": "Ver Inventario",
+      "short_name": "Inventario",
+      "description": "Consulta tu inventario actual",
+      "url": "/dashboard"
+    }
+  ]
+}

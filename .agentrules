@@ -1,0 +1,22 @@
+# MASTER DESIGN & MOTION SKILL SYSTEM: NEXO.IA
+
+## 1. DESIGN SYSTEM & UI/UX PRO MAX
+- **Color Palette**: Navy Base `#050B1F`, Card Surface `#0A1730`, Accent Cyan `#22E6D6`, Ice Text `#F3F6FC`, Slate `#8998C2`.
+- **Estética & Visuals**: Glassmorphism premium, bordes con brillo dinámico (`border-white/10` con hover `border-[#22E6D6]/40`), efectos de gradiente cian/azul y sombreados neón profundos (`box-shadow: 0 20px 50px -15px rgba(34,230,214,0.3)`).
+- **Inspiración 21st.dev & Impeccable Design**: Componentes limpios, pulidos, accesibles, con tipografía expresiva, Bento Grids y microinteracciones de nivel internacional.
+
+## 2. PRINCIPIOS DE ANIMACIÓN (EMIL KOWALSKI & TASTE-SKILL)
+- **Framer Motion Setup**:
+  - Usa física de resortes (`type: "spring", stiffness: 260, damping: 20`) para hovers y entradas.
+  - Cero saltos bruscos de layout: implementa `layout` o `layoutId` para transiciones fluidas.
+  - Microinteracciones: retroalimentación táctil/visual en cada hover (`whileHover={{ scale: 1.02, y: -4 }}`) y click (`whileTap={{ scale: 0.98 }}`).
+  - Animaciones de desplazamiento: usa `framer-motion` `whileInView` con `viewport={{ once: true, margin: "-100px" }}`.
+
+## 3. INTEGRACIÓN 3D & CINEMÁTICA (THREE.JS, SPLINE, THEATRE.JS & HIGGSFIELD)
+- **Escenas WebGL**: Utiliza `@react-three/fiber` y `@react-three/drei` con tarjetas flotantes (`Float`), luz ambiental reflectiva, sombras suaves y controles de órbita inmersivos (`OrbitControls` con rotación automática).
+- **Estilo Higgsfield**: Renderiza visuals fotorrealistas de infraestructuras corporativas con atmósfera cinematográfica, profundidad de campo e iluminación neón que reaccione al cursor.
+- **Optimización**: Desmonta geometrías en `useEffect`, limita sombras complejas y mantiene un `requestAnimationFrame` limpio.
+
+## 4. OMNIROUTE & ARQUITECTURA DE CÓDIGO (YISA PATTERNS)
+- Modula el código en componentes altamente reutilizables bajo `/src/components/ui/` y `/src/components/sections/`.
+- Prioriza compatibilidad con Next.js App Router usando la directiva `'use client'` estrictamente en componentes interactivos o con Canvas.

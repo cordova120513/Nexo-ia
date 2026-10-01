@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0b1120;
+  --foreground: #f8fafc;
+  --card-bg: rgba(15, 23, 42, 0.75);
+  --card-border: rgba(51, 65, 85, 0.6);
+  --accent-cyan: #22e6d6;
+  --accent-sky: #38bdf8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+body {
+  background: #090e17;
+  color: #f1f5f9;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism modern SaaS utility */
+.saas-glass {
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(51, 65, 85, 0.65);
+}
+
+.saas-glass-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.saas-glass-hover:hover {
+  background: rgba(30, 41, 59, 0.82);
+  border-color: rgba(34, 230, 214, 0.5);
+  box-shadow: 0 10px 30px -10px rgba(34, 230, 214, 0.2);
+}
+
+@keyframes levitate3D {
+  0%, 100% {
+    transform: translateY(0px) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
+  }
+  25% {
+    transform: translateY(-10px) rotateX(2deg) rotateY(-3deg) rotateZ(0.8deg);
+  }
+  50% {
+    transform: translateY(-18px) rotateX(0deg) rotateY(3deg) rotateZ(-1deg);
+  }
+  75% {
+    transform: translateY(-8px) rotateX(-2deg) rotateY(-1deg) rotateZ(0.5deg);
+  }
+}
+
+@keyframes dynamicPulseGlow {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 15px rgba(34, 230, 214, 0.45)) drop-shadow(0 0 35px rgba(34, 230, 214, 0.2));
+  }
+  50% {
+    transform: scale(1.08) rotate(180deg);
+    filter: drop-shadow(0 0 30px rgba(34, 230, 214, 0.85)) drop-shadow(0 0 60px rgba(56, 189, 248, 0.45));
+  }
+}
+
+.animate-levitate-3d {
+  animation: levitate3D 7s ease-in-out infinite;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.animate-core-pulse {
+  animation: dynamicPulseGlow 6s ease-in-out infinite;
+  will-change: transform, filter;
+}
