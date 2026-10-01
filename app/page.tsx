@@ -6,6 +6,8 @@ import Hero from '@/src/components/landing/Hero';
 import AcercaDeNosotros from '@/src/components/landing/AcercaDeNosotros';
 import ParaQuienEs from '@/src/components/landing/ParaQuienEs';
 import BentoGrid from '@/src/components/landing/BentoGrid';
+import ComoTrabajamos from '@/src/components/landing/ComoTrabajamos';
+import Servicios from '@/src/components/landing/Servicios';
 import Soluciones3D from '@/src/components/Soluciones3D';
 import SolucionesTabs from '@/src/components/landing/SolucionesTabs';
 import ContactoValladolid from '@/src/components/landing/ContactoValladolid';
@@ -91,6 +93,26 @@ export default function Home() {
           variants={sectionVariants}
         >
           <BentoGrid />
+        </motion.div>
+
+        {/* Sección "¿Cómo trabajamos?": Timeline de 4 pasos con animaciones stagger */}
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.08 }}
+          variants={sectionVariants}
+        >
+          <ComoTrabajamos />
+        </motion.div>
+
+        {/* Sección "Servicios": Grid de 6 módulos con métricas y CTA banner */}
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.08 }}
+          variants={sectionVariants}
+        >
+          <Servicios />
         </motion.div>
 
         {/* Metodología Paso a Paso Pyme con Escena e Imágenes Originales */}
