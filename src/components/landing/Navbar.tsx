@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Menu, X, ArrowUpRight, LogIn, UserPlus } from 'lucide-react';
+import Image from 'next/image';
+import { Menu, X, ArrowUpRight, LogIn, UserPlus, Sparkles } from 'lucide-react';
 
 const springTransition = { type: 'spring' as const, stiffness: 260, damping: 20 };
 
@@ -47,20 +48,31 @@ export default function Navbar() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         {/* Brand Logo */}
         <Link href="/" className="group flex items-center gap-3">
+          {/* Logo: favicon.png oficial con glow cyan al hover */}
           <motion.div
-            whileHover={{ scale: 1.08, rotate: 6 }}
+            whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.95 }}
             transition={springTransition}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#22E6D6]/10 border border-[#22E6D6]/30 text-[#22E6D6] shadow-[0_0_20px_rgba(34,230,214,0.25)] group-hover:border-[#22E6D6]/70 group-hover:shadow-[0_0_25px_rgba(34,230,214,0.45)] transition-all"
+            className="relative flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-[#22E6D6]/10 border border-[#22E6D6]/30 shadow-[0_0_18px_rgba(34,230,214,0.22)] group-hover:border-[#22E6D6]/70 group-hover:shadow-[0_0_28px_rgba(34,230,214,0.5)] transition-all overflow-hidden"
           >
-            <Sparkles className="h-5 w-5" />
+            <Image
+              src="/favicon.png"
+              alt="NEXO.IA Logo"
+              width={42}
+              height={42}
+              className="object-contain"
+              unoptimized
+            />
           </motion.div>
+
+          {/* Brand text + tagline */}
           <div className="flex flex-col">
-            <span className="font-extrabold text-xl tracking-tight text-[#F3F6FC]">
-              NEXO<span className="text-[#22E6D6]">.IA</span>
+            <span className="font-extrabold text-xl tracking-tight text-[#F3F6FC] leading-tight">
+              NEXO<span className="text-transparent bg-clip-text bg-gradient-to-r from-[#22E6D6] to-sky-400">.IA</span>
             </span>
-            <span className="text-[10px] tracking-widest text-[#8998C2] uppercase font-semibold -mt-1">
-              Valladolid • Pymes AI
+            {/* Separador + tagline oficial */}
+            <span className="text-[10px] tracking-widest text-cyan-400/80 uppercase font-bold -mt-0.5 leading-tight">
+              CONECTAMOS TU NEGOCIO CON LA INTELIGENCIA.
             </span>
           </div>
         </Link>

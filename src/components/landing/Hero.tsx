@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
-import { ArrowRight, ShieldCheck, Cpu, Activity, Sparkles, Bot, Layers } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
+import { ArrowRight, ShieldCheck, Cpu, Activity, Sparkles, Store, TrendingUp } from 'lucide-react';
 import Image from 'next/image';
 
 const springTransition = { type: 'spring' as const, stiffness: 260, damping: 20 };
@@ -13,62 +13,137 @@ const metricBadges = [
   { icon: Activity, label: 'Disponibilidad Continua', value: '99.98% SLA' },
 ];
 
+// ── Imágenes PyME reales ──────────────────────────────────────────────────
+const pymeImages = [
+  { src: '/images/empresa1.jpeg', label: 'Restaurante & Café', badge: 'Automatización de pedidos' },
+  { src: '/images/empresa2.jpeg', label: 'Comercio Local', badge: 'Control de inventario IA' },
+  { src: '/images/empresa3.jpeg', label: 'Tienda de Moda', badge: 'Analítica de ventas live' },
+];
+
+// ── Showcase flotante 3D con crossfade ───────────────────────────────────
+function PyMEShowcase() {
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setCurrent((c) => (c + 1) % pymeImages.length), 4000);
+    return () => clearInterval(t);
+  }, []);
+
+  const img = pymeImages[current];
+
+  return (
+    <motion.div
+      animate={{ y: [0, -15, 0] }}
+      transition={{ repeat: Infinity, duration: 6, ease: 'easeInOut' }}
+      className="absolute -right-8 lg:right-4 top-20 lg:top-12 w-72 sm:w-[360px] lg:w-[440px] pointer-events-none -z-10 select-none"
+    >
+      {/* Anillo de resplandor exterior */}
+      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-cyan-400/20 via-sky-400/10 to-transparent blur-2xl scale-110" />
+
+      {/* Tarjeta principal glassmorphism */}
+      <div className="relative rounded-3xl border border-cyan-400/25 bg-slate-900/70 backdrop-blur-xl overflow-hidden shadow-[0_30px_80px_-10px_rgba(34,230,214,0.35)]">
+
+        {/* Imagen con crossfade */}
+        <div className="relative w-full h-64 sm:h-72 lg:h-80 overflow-hidden">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={img.src}
+              initial={{ opacity: 0, scale: 1.04 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              transition={{ duration: 0.8, ease: 'easeInOut' }}
+              className="absolute inset-0"
+            >
+              <Image
+                src={img.src}
+                alt={img.label}
+                fill
+                unoptimized
+                sizes="(max-width: 640px) 288px, (max-width: 1024px) 360px, 440px"
+                className="object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Badge rotativo */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`badge-${current}`}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 12 }}
+              transition={{ duration: 0.4 }}
+              className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/85 backdrop-blur-md border border-cyan-400/30 text-[10px] font-bold text-cyan-300"
+            >
+              <TrendingUp className="w-3 h-3" />
+              {img.badge}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Indicadores */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {pymeImages.map((_, i) => (
+              <div
+                key={i}
+                className={`h-1 rounded-full transition-all duration-500 ${
+                  i === current ? 'w-5 bg-cyan-400' : 'w-1.5 bg-slate-600'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Footer de la tarjeta */}
+        <div className="px-4 py-3 flex items-center justify-between border-t border-slate-700/50">
+          <div className="flex items-center gap-2">
+            <Store className="w-3.5 h-3.5 text-cyan-400" />
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={`label-${current}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.3 }}
+                className="text-xs font-semibold text-slate-200"
+              >
+                {img.label}
+              </motion.span>
+            </AnimatePresence>
+          </div>
+          <span className="text-[10px] font-mono text-emerald-400 font-bold">IA Activa ✦</span>
+        </div>
+      </div>
+
+      {/* Sombra de profundidad */}
+      <div className="absolute -bottom-3 left-4 right-4 h-8 bg-cyan-400/10 blur-xl rounded-full" />
+    </motion.div>
+  );
+}
+
 export default function Hero() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollY } = useScroll();
 
-  // Parallax multicapa diferenciado
-  const yBg = useTransform(scrollY, [0, 1000], [0, 220]); // Scroll lento para fondo
-  const yBuilding = useTransform(scrollY, [0, 1000], [0, -140]); // Parallax lateral edificio
-  const yText = useTransform(scrollY, [0, 1000], [0, 60]); // Ritmo de texto
+  const yBg = useTransform(scrollY, [0, 1000], [0, 220]);
+  const yText = useTransform(scrollY, [0, 1000], [0, 60]);
 
   return (
     <section 
       ref={containerRef}
       className="relative min-h-[96vh] pt-36 pb-24 px-6 max-w-7xl mx-auto flex flex-col justify-center items-center text-center overflow-hidden"
     >
-      {/* Resplandores volumétricos de acento para complementar hero-bg.jpg */}
+      {/* Resplandores volumétricos */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[450px] bg-[#22E6D6]/15 rounded-full blur-[140px] pointer-events-none -z-10" />
       <div className="absolute top-1/3 left-1/4 w-80 h-80 bg-blue-600/20 rounded-full blur-[120px] pointer-events-none -z-10" />
       <div className="absolute top-1/3 right-1/4 w-80 h-80 bg-cyan-500/15 rounded-full blur-[120px] pointer-events-none -z-10" />
 
-      {/* =========================================================================
-          EDIFICIO CUTOUT LATERAL CON LEVITACIÓN 3D FLOTANTE & PARALLAX SUAVE
-          (building-cutout.png en máxima resolución sin compresión)
-         ========================================================================= */}
-      <motion.div
-        style={{ y: yBuilding }}
-        className="absolute -right-16 lg:right-2 top-24 lg:top-16 w-80 sm:w-[420px] lg:w-[540px] h-[580px] pointer-events-none -z-10 opacity-80 lg:opacity-95 select-none perspective-[1200px]"
-      >
-        <motion.div 
-          animate={{
-            y: [-14, 14, -14],
-            rotateZ: [-1.2, 1.2, -1.2],
-            rotateY: [-4, 4, -4],
-          }}
-          transition={{
-            repeat: Infinity,
-            duration: 6.5,
-            ease: 'easeInOut'
-          }}
-          className="relative w-full h-full transform-gpu"
-        >
-          <Image
-            src="/images/building-cutout.png"
-            alt="Infraestructura NEXO.IA"
-            fill
-            priority
-            unoptimized
-            sizes="(max-width: 1024px) 420px, 540px"
-            className="object-contain filter drop-shadow-[0_15px_45px_rgba(34,230,214,0.45)] drop-shadow-[0_0_20px_rgba(0,180,255,0.3)]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#050B1F]/90 via-transparent to-transparent" />
-        </motion.div>
-      </motion.div>
+      {/* Showcase PyME flotante */}
+      <PyMEShowcase />
 
       {/* Contenido Hero */}
       <motion.div style={{ y: yText }} className="relative z-10 flex flex-col items-center">
-        {/* Badge estilo 21st.dev con micro-animación */}
+        {/* Badge animado */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -96,7 +171,7 @@ export default function Hero() {
           </span>
         </motion.h1>
 
-        {/* Subtítulo Descriptivo */}
+        {/* Subtítulo */}
         <motion.p
           initial={{ opacity: 0, y: 25 }}
           animate={{ opacity: 1, y: 0 }}
@@ -106,7 +181,7 @@ export default function Hero() {
           Consultoría estratégica de IA, flujos automatizados de atención a clientes y analítica en tiempo real para hacer crecer tu PyME sin sobrecostos.
         </motion.p>
 
-        {/* Botones de Acción (CTAs) con microinteracciones inmersivas */}
+        {/* CTAs */}
         <motion.div
           initial={{ opacity: 0, y: 25 }}
           animate={{ opacity: 1, y: 0 }}
@@ -139,7 +214,7 @@ export default function Hero() {
           </motion.a>
         </motion.div>
 
-        {/* Tarjeta Núcleo IA Flotante en Hero con ai-core.png (Pulso Dinámico, Rotación & Brillo Neón) */}
+        {/* Tarjeta Núcleo IA Flotante */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -147,7 +222,6 @@ export default function Hero() {
           whileHover={{ scale: 1.04, y: -4 }}
           className="mt-12 inline-flex items-center gap-4 px-6 py-3.5 rounded-2xl border border-cyan-400/35 bg-slate-900/80 backdrop-blur-xl shadow-[0_0_30px_rgba(34,230,214,0.2)] hover:border-cyan-400 hover:shadow-[0_0_40px_rgba(34,230,214,0.35)] transition-all duration-300"
         >
-          {/* Animación de pulso dinámico, rotación y brillo inmersivo continuo para ai-core.png */}
           <motion.div
             animate={{ 
               y: [-6, 6, -6],
@@ -159,11 +233,7 @@ export default function Hero() {
                 'drop-shadow(0 0 12px rgba(34,230,214,0.5)) drop-shadow(0 0 25px rgba(56,189,248,0.3))',
               ]
             }}
-            transition={{
-              repeat: Infinity,
-              duration: 5.5,
-              ease: 'easeInOut'
-            }}
+            transition={{ repeat: Infinity, duration: 5.5, ease: 'easeInOut' }}
             className="w-11 h-11 sm:w-14 sm:h-14 relative flex-shrink-0"
           >
             <Image
@@ -185,7 +255,7 @@ export default function Hero() {
           </div>
         </motion.div>
 
-        {/* Barra de Telemetría y Métricas en Vivo con Microinteracciones 3D */}
+        {/* Barra de Telemetría */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
