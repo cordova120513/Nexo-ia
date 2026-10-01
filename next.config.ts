@@ -36,7 +36,7 @@ const securityHeaders = [
       isDev
         ? "connect-src 'self' ws://localhost:* http://localhost:* https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://api.mercadopago.com"
         : "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://api.mercadopago.com",
-      "frame-src 'self' https://accounts.google.com https://www.mercadopago.com",
+      "frame-src 'self' https://accounts.google.com https://www.google.com https://www.mercadopago.com",
       "frame-ancestors 'none'",
       "object-src 'none'",
       "base-uri 'self'",

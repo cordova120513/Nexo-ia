@@ -81,7 +81,7 @@ export default function ContactoValladolid() {
               <div className="flex items-start gap-2.5 text-sm text-slate-100">
                 <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Dirección:</strong> Calle 33 entre 38 y 40, Col. Santa Lucía, Valladolid, Yucatán, México.
+                  <strong>Dirección:</strong> C. 33 #117, Col. Santa Lucía, 97782 Valladolid, Yuc. (Plus Code: MRV2+V2)
                 </span>
               </div>
               <div className="flex items-center gap-2.5 text-sm text-slate-300">
@@ -93,13 +93,14 @@ export default function ContactoValladolid() {
             </div>
           </div>
 
-          {/* Iframe del Mapa de Google Maps con Estilo Dark Mode */}
+          {/* Iframe interactivo de Google Maps — sin API Key */}
           <div className="relative w-full h-72 sm:h-80 rounded-2xl overflow-hidden border border-cyan-400/30 shadow-[0_0_25px_rgba(34,230,214,0.15)] bg-slate-950">
             <iframe
-              title="Mapa de Sede Valladolid"
-              src="https://maps.google.com/maps?q=Calle%2033%20entre%2038%20y%2040,%20Col.%20Santa%20Luc%C3%ADa,%20Valladolid,%20Yucat%C3%A1n,%20M%C3%A9xico&t=&z=16&ie=UTF8&iwloc=&output=embed"
+              title="Sede NEXO.IA — C. 33 117, Sta Lucía, Valladolid, Yuc."
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d942.4774488993487!2d-88.20223693913116!3d20.690003699999998!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8f514a5547a5f36b%3A0x94db1f44cd0b3c6e!2sC.%2033%20117%2C%20Sta%20Luc%C3%ADa%2C%2097782%20Valladolid%2C%20Yuc.!5e0!3m2!1ses-419!2smx!4v1696200000000!5m2!1ses-419!2smx"
               className="w-full h-full border-0 filter invert-[90%] hue-rotate-180 contrast-[1.15] brightness-[0.92]"
               loading="lazy"
+              allowFullScreen
               referrerPolicy="no-referrer-when-downgrade"
             />
             {/* Overlay sutil para matizar en la estética dark cyan */}
