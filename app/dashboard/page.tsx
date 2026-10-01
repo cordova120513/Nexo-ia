@@ -11,7 +11,7 @@ import {
   Building2, Store, Search, MessageSquare, Headphones, Truck, Filter,
   ArrowUpDown, Upload, Send, Bot, RefreshCw, ChevronRight, Phone, HelpCircle,
   Camera, Lock, Unlock, Copy, Share2, Printer, Check, Clock, AlertCircle, 
-  ShoppingCart, FileText, Receipt, Zap
+  ShoppingCart, FileText, Receipt, Zap, KeyRound, Mail
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, 
@@ -19,8 +19,9 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
+import { sanitizeInput } from '@/lib/security';
 
-type TabSection = 'inicio' | 'productos' | 'inventario' | 'ventas' | 'mermas' | 'metricas' | 'proveedores' | 'ajustes';
+type TabSection = 'inicio' | 'productos' | 'inventario' | 'ventas' | 'mermas' | 'metricas' | 'proveedores' | 'cortez' | 'auditoria' | 'ajustes';
 
 interface Producto {
   id: string;
@@ -44,6 +45,7 @@ interface Venta {
   fechaHora?: string;
   periodo: 'dia' | 'semana' | 'mes' | 'ano';
   metodoPago: string;
+  cajeroNombre?: string;
 }
 
 interface Merma {
@@ -56,6 +58,7 @@ interface Merma {
   fecha: string;
   fechaHora?: string;
   periodo: 'dia' | 'mes' | 'ano';
+  cajeroNombre?: string;
 }
 
 interface GastoFijo {
@@ -73,6 +76,36 @@ interface Proveedor {
   categoriaPaquete: string;
   fechaEntrega: string;
   imagen: string;
+}
+
+interface Cajero {
+  id: string;
+  nombre: string;
+  pin: string;
+  turno: string;
+  activo: boolean;
+}
+
+interface CorteZ {
+  id: string;
+  fechaHora: string;
+  cajeroNombre: string;
+  montoInicial: number;
+  ventasEfectivo: number;
+  ventasTarjeta: number;
+  totalEsperado: number;
+  efectivoReal: number;
+  diferencia: number;
+  notas: string;
+}
+
+interface AuditLog {
+  id: string;
+  timestamp: string;
+  usuario: string;
+  accion: string;
+  modulo: string;
+  detalles: string;
 }
 
 interface ChatMessage {
@@ -111,14 +144,89 @@ function DashboardContent() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [gastosFijos, setGastosFijos] = useState<GastoFijo[]>([]);
 
-  // Control de Roles: Administrador vs Cajero
+  // Control de Roles y Personal (Flujo Just-In-Time y Seguridad Estricta)
   const [modoRol, setModoRol] = useState<'admin' | 'cajero'>('admin');
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingTab, setPendingTab] = useState<TabSection | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [adminPin, setAdminPin] = useState('1234');
-  const [nuevoPin, setNuevoPin] = useState('');
+  const [adminPin, setAdminPin] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('nexo_admin_pin') || '';
+    }
+    return '';
+  });
+
+  // Modal obligatorio "Protege tu Cuenta de Administrador" (Just-In-Time)
+  const [modalCrearPinJIT, setModalCrearPinJIT] = useState(false);
+  const [jitPin, setJitPin] = useState('');
+  const [jitConfirmPin, setJitConfirmPin] = useState('');
+  const [jitError, setJitError] = useState<string | null>(null);
+
+  // Formulario de cambio de PIN en Ajustes
+  const [pinActualAjustes, setPinActualAjustes] = useState('');
+  const [nuevoPinAjustes, setNuevoPinAjustes] = useState('');
+  const [confirmarPinAjustes, setConfirmarPinAjustes] = useState('');
+  const [pinAjustesError, setPinAjustesError] = useState<string | null>(null);
+  const [pinAjustesSuccess, setPinAjustesSuccess] = useState<string | null>(null);
+
+  // Modal / Estado de Recuperación de PIN por Correo
+  const [enviandoRecuperacionEmail, setEnviandoRecuperacionEmail] = useState(false);
+  const [emailRecuperacionInput, setEmailRecuperacionInput] = useState('');
+  const [showPromptEmailRecuperacion, setShowPromptEmailRecuperacion] = useState(false);
+
+  // Gestión de Cajeros y Personal
+  const [cajeros, setCajeros] = useState<Cajero[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nexo_cajeros');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [
+      { id: 'caj-1', nombre: 'Caja 1 - Turno Mañana', pin: '1111', turno: 'Matutino (08:00 - 15:00)', activo: true },
+      { id: 'caj-2', nombre: 'Caja 2 - Turno Tarde', pin: '2222', turno: 'Vespertino (15:00 - 22:00)', activo: true },
+    ];
+  });
+  const [cajeroActivo, setCajeroActivo] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('nexo_cajero_activo') || 'Caja 1 - Turno Mañana';
+    }
+    return 'Caja 1 - Turno Mañana';
+  });
+  const [modalSeleccionCajero, setModalSeleccionCajero] = useState(false);
+  const [modalNuevoCajero, setModalNuevoCajero] = useState(false);
+  const [nuevoCajeroForm, setNuevoCajeroForm] = useState({ nombre: '', pin: '', turno: 'Matutino' });
+
+  // Cierre de Caja (Corte Z)
+  const [cortesZ, setCortesZ] = useState<CorteZ[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nexo_cortes_z');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [corteZForm, setCorteZForm] = useState({
+    montoInicial: '500',
+    efectivoReal: '',
+    notas: '',
+  });
+  const [corteTicketModal, setCorteTicketModal] = useState<CorteZ | null>(null);
+
+  // Registro de Auditoría (Audit Logs)
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nexo_audit_logs');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [auditFilterModulo, setAuditFilterModulo] = useState<string>('todos');
+  const [auditSearch, setAuditSearch] = useState<string>('');
 
   // Estados de interfaz y modales
   const [modalProductoOpen, setModalProductoOpen] = useState(false);
@@ -246,7 +354,15 @@ function DashboardContent() {
       setProfile((prev) => ({ ...prev, avatar: savedAvatar }));
     }
 
-    // Obtener usuario Supabase si existe
+    // Detección de retorno tras recuperación de PIN
+    if (searchParams.get('pinReset') === 'true') {
+      setModoRol('admin');
+      localStorage.setItem('nexo_modo_rol', 'admin');
+      setSaveStatus('¡PIN de Administrador restablecido exitosamente! Acceso total concedido.');
+      setTimeout(() => setSaveStatus(null), 5000);
+    }
+
+    // Obtener usuario Supabase si existe y sincronizar PIN
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
@@ -257,6 +373,25 @@ function DashboardContent() {
           empresa: meta?.company || prev.empresa,
           email: user.email || prev.email,
         }));
+
+        // Sincronizar PIN de Administrador desde metadatos de Supabase
+        if (meta?.pin_admin && /^\d{4}$/.test(meta.pin_admin)) {
+          setAdminPin(meta.pin_admin);
+          localStorage.setItem('nexo_admin_pin', meta.pin_admin);
+        } else {
+          // Consultar tabla empresas si está disponible
+          supabase
+            .from('empresas')
+            .select('pin_admin')
+            .eq('user_id', user.id)
+            .single()
+            .then(({ data, error }) => {
+              if (!error && data?.pin_admin && /^\d{4}$/.test(data.pin_admin)) {
+                setAdminPin(data.pin_admin);
+                localStorage.setItem('nexo_admin_pin', data.pin_admin);
+              }
+            });
+        }
       }
     });
 
@@ -343,10 +478,40 @@ function DashboardContent() {
     localStorage.setItem('nexo_pyme_gastos_fijos', JSON.stringify(items));
   };
 
+  const saveCajerosToStorage = (items: Cajero[]) => {
+    setCajeros(items);
+    localStorage.setItem('nexo_cajeros', JSON.stringify(items));
+  };
+
+  const saveCortesZToStorage = (items: CorteZ[]) => {
+    setCortesZ(items);
+    localStorage.setItem('nexo_cortes_z', JSON.stringify(items));
+  };
+
   // Helper para timestamp exacto legible (ej. "1 de octubre de 2026, 14:35 hs")
   const formatearTimestampCompleto = () => {
     const ahora = new Date();
     return `${ahora.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}, ${ahora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })} hs`;
+  };
+
+  // Registro de Auditoría (Audit Logs) para trazabilidad inmutable
+  const registrarAuditLog = (accion: string, modulo: string, detalles: string) => {
+    const nuevoLog: AuditLog = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: formatearTimestampCompleto(),
+      usuario: modoRol === 'cajero' ? cajeroActivo : 'Administrador',
+      accion: sanitizeInput(accion),
+      modulo: sanitizeInput(modulo),
+      detalles: sanitizeInput(detalles),
+    };
+
+    setAuditLogs((prev) => {
+      const updated = [nuevoLog, ...prev.slice(0, 250)];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nexo_audit_logs', JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   // Cálculos totales en tiempo real
@@ -355,6 +520,27 @@ function DashboardContent() {
   const balanceNeto = totalIngresos - totalMermas;
   const totalGastosFijos = useMemo(() => gastosFijos.reduce((acc, g) => acc + g.monto, 0), [gastosFijos]);
   const utilidadNetaReal = useMemo(() => balanceNeto - totalGastosFijos, [balanceNeto, totalGastosFijos]);
+
+  // Desglose de Ventas por método de pago para Arqueo / Corte Z
+  const ventasEfectivoTotal = useMemo(() => {
+    return ventas
+      .filter((v) => v.metodoPago?.toLowerCase().includes('efectivo') || !v.metodoPago)
+      .reduce((acc, v) => acc + v.montoTotal, 0);
+  }, [ventas]);
+
+  const ventasTarjetaTotal = useMemo(() => {
+    return ventas
+      .filter((v) => !v.metodoPago?.toLowerCase().includes('efectivo') && v.metodoPago)
+      .reduce((acc, v) => acc + v.montoTotal, 0);
+  }, [ventas]);
+
+  const ventasEfectivoCount = useMemo(() => {
+    return ventas.filter((v) => v.metodoPago?.toLowerCase().includes('efectivo') || !v.metodoPago).length;
+  }, [ventas]);
+
+  const ventasTarjetaCount = useMemo(() => {
+    return ventas.filter((v) => !v.metodoPago?.toLowerCase().includes('efectivo') && v.metodoPago).length;
+  }, [ventas]);
 
   // Productos con stock bajo (Reabastecimiento automático)
   const productosBajoStock = useMemo(() => {
@@ -413,16 +599,19 @@ function DashboardContent() {
     reader.readAsDataURL(file);
   };
 
-  // Handler para agregar producto manual
+  // Handler para agregar producto manual (con sanitización y auditoría)
   const handleAddProductoManual = (e: React.FormEvent) => {
     e.preventDefault();
     if (!productoManual.nombre || !productoManual.precio) return;
 
+    const nombreLimpio = sanitizeInput(productoManual.nombre);
+    const catLimpia = sanitizeInput(productoManual.categoria) || 'General';
+
     const nuevo: Producto = {
       id: `prod_${Date.now()}`,
-      nombre: productoManual.nombre,
+      nombre: nombreLimpio,
       imagen: productoManual.imagen || '/images/Empresa 1.jpeg',
-      categoria: productoManual.categoria || 'General',
+      categoria: catLimpia,
       costo: parseFloat(productoManual.costo) || 0,
       precio: parseFloat(productoManual.precio) || 0,
       stock: parseInt(productoManual.stock) || 0,
@@ -432,6 +621,12 @@ function DashboardContent() {
 
     const updated = [nuevo, ...productos];
     saveProductosToStorage(updated);
+    registrarAuditLog(
+      'Producto Agregado',
+      'Inventario',
+      `Creado: "${nuevo.nombre}" | Precio: $${nuevo.precio} MXN | Stock: ${nuevo.stock} uds`
+    );
+
     setProductoManual({
       nombre: '',
       imagen: '/images/Empresa 1.jpeg',
@@ -447,7 +642,7 @@ function DashboardContent() {
     setTimeout(() => setSaveStatus(null), 3000);
   };
 
-  // Handler para registrar venta con marca de tiempo completa
+  // Handler para registrar venta con marca de tiempo completa, cajero y auditoría
   const handleAddVenta = (e: React.FormEvent) => {
     e.preventDefault();
     const prod = productos.find((p) => p.id === nuevaVenta.productoId) || productos[0];
@@ -456,6 +651,7 @@ function DashboardContent() {
     const cant = parseInt(nuevaVenta.cantidad) || 1;
     const total = prod.precio * cant;
     const timestampExacto = formatearTimestampCompleto();
+    const responsable = modoRol === 'cajero' ? cajeroActivo : 'Administrador';
 
     const ventaItem: Venta = {
       id: `v_${Date.now()}`,
@@ -467,6 +663,7 @@ function DashboardContent() {
       fechaHora: timestampExacto,
       periodo: nuevaVenta.periodo,
       metodoPago: nuevaVenta.metodoPago,
+      cajeroNombre: responsable,
     };
 
     saveVentasToStorage([ventaItem, ...ventas]);
@@ -477,11 +674,17 @@ function DashboardContent() {
     );
     saveProductosToStorage(updatedProds);
 
+    registrarAuditLog(
+      'Venta Cobrada',
+      'Ventas',
+      `${cant}x ${prod.nombre} | Total: $${total} MXN (${ventaItem.metodoPago}) por ${responsable}`
+    );
+
     setSaveStatus(`Venta registrada: $${total} MXN (${timestampExacto})`);
     setTimeout(() => setSaveStatus(null), 3000);
   };
 
-  // Handler para registrar merma con marca de tiempo completa
+  // Handler para registrar merma con marca de tiempo completa, cajero y auditoría
   const handleAddMerma = (e: React.FormEvent) => {
     e.preventDefault();
     const prod = productos.find((p) => p.id === nuevaMerma.productoId) || productos[0];
@@ -490,17 +693,20 @@ function DashboardContent() {
     const cant = parseInt(nuevaMerma.cantidad) || 1;
     const costoPerdida = prod.costo * cant;
     const timestampExacto = formatearTimestampCompleto();
+    const motivoLimpio = sanitizeInput(nuevaMerma.motivo) || 'Merma no especificada';
+    const responsable = modoRol === 'cajero' ? cajeroActivo : 'Administrador';
 
     const mermaItem: Merma = {
       id: `m_${Date.now()}`,
       productoId: prod.id,
       productoNombre: prod.nombre,
       cantidad: cant,
-      motivo: nuevaMerma.motivo,
+      motivo: motivoLimpio,
       costoDevaluacion: costoPerdida,
       fecha: timestampExacto,
       fechaHora: timestampExacto,
       periodo: nuevaMerma.periodo,
+      cajeroNombre: responsable,
     };
 
     saveMermasToStorage([mermaItem, ...mermas]);
@@ -511,24 +717,39 @@ function DashboardContent() {
     );
     saveProductosToStorage(updatedProds);
 
+    registrarAuditLog(
+      'Merma Registrada',
+      'Mermas',
+      `${cant}x ${prod.nombre} (-$${costoPerdida} MXN). Motivo: ${motivoLimpio} por ${responsable}`
+    );
+
     setSaveStatus(`Merma registrada: - $${costoPerdida} MXN (${timestampExacto})`);
     setTimeout(() => setSaveStatus(null), 3000);
   };
 
-  // Handler para registrar gasto fijo operativo
+  // Handler para registrar gasto fijo operativo con sanitización y auditoría
   const handleAddGastoFijo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nuevoGasto.nombre || !nuevoGasto.monto) return;
 
+    const conceptoLimpio = sanitizeInput(nuevoGasto.nombre);
+    const monto = parseFloat(nuevoGasto.monto) || 0;
+
     const item: GastoFijo = {
       id: `gf_${Date.now()}`,
-      nombre: nuevoGasto.nombre,
-      monto: parseFloat(nuevoGasto.monto) || 0,
+      nombre: conceptoLimpio,
+      monto,
       categoria: nuevoGasto.categoria,
       fecha: formatearTimestampCompleto(),
     };
 
     saveGastosFijosToStorage([item, ...gastosFijos]);
+    registrarAuditLog(
+      'Gasto Operativo Registrado',
+      'Finanzas',
+      `Concepto: "${item.nombre}" | Monto: $${item.monto} MXN (${item.categoria})`
+    );
+
     setNuevoGasto({
       nombre: '',
       monto: '',
@@ -538,9 +759,9 @@ function DashboardContent() {
     setTimeout(() => setSaveStatus(null), 3000);
   };
 
-  // Handler para cambiar de pestaña con verificación de rol
+  // Handler para cambiar de pestaña con verificación de rol y protección estricta
   const handleTabClick = (tab: TabSection) => {
-    const cajeroAllowedTabs: TabSection[] = ['inicio', 'ventas', 'mermas', 'inventario'];
+    const cajeroAllowedTabs: TabSection[] = ['inicio', 'productos', 'inventario', 'ventas', 'mermas', 'cortez'];
     if (modoRol === 'cajero' && !cajeroAllowedTabs.includes(tab)) {
       setPendingTab(tab);
       setPinInput('');
@@ -552,35 +773,286 @@ function DashboardContent() {
     setMobileMenuOpen(false);
   };
 
-  // Handler para verificar PIN de Administrador
+  // Helper para persistir PIN en estado, localStorage y base de datos Supabase
+  const persistAdminPin = async (nuevoPinVal: string) => {
+    setAdminPin(nuevoPinVal);
+    localStorage.setItem('nexo_admin_pin', nuevoPinVal);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.auth.updateUser({
+          data: { pin_admin: nuevoPinVal },
+        });
+        await supabase
+          .from('empresas')
+          .update({ pin_admin: nuevoPinVal })
+          .eq('user_id', user.id);
+      }
+    } catch (err) {
+      console.error('Error persistiendo PIN en Supabase:', err);
+    }
+  };
+
+  // Handler para verificar PIN de Administrador (Desbloqueo desde Modo Cajero)
   const handleVerificarPin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!adminPin) {
+      setModoRol('admin');
+      localStorage.setItem('nexo_modo_rol', 'admin');
+      setShowPinModal(false);
+      setPinError(false);
+      return;
+    }
+
     if (pinInput === adminPin) {
       setModoRol('admin');
       localStorage.setItem('nexo_modo_rol', 'admin');
       setShowPinModal(false);
       setPinError(false);
+      setPinInput('');
+      registrarAuditLog('Acceso Administrador Concedido', 'Seguridad', 'Desbloqueo exitoso mediante PIN de Administrador');
       if (pendingTab) {
         setActiveTab(pendingTab);
         setPendingTab(null);
       }
-      setSaveStatus('Modo Administrador activado.');
+      setSaveStatus('Modo Administrador activado con acceso total.');
       setTimeout(() => setSaveStatus(null), 3000);
     } else {
       setPinError(true);
     }
   };
 
-  // Handler para cambiar PIN
-  const handleCambiarPin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (nuevoPin.length >= 4) {
-      setAdminPin(nuevoPin);
-      localStorage.setItem('nexo_admin_pin', nuevoPin);
-      setNuevoPin('');
-      setSaveStatus('PIN de Administrador actualizado con éxito.');
-      setTimeout(() => setSaveStatus(null), 3000);
+  // Activar Modo Cajero inmediatamente
+  const activarModoCajeroDirecto = () => {
+    setModoRol('cajero');
+    localStorage.setItem('nexo_modo_rol', 'cajero');
+
+    const cajeroAllowedTabs: TabSection[] = ['inicio', 'productos', 'inventario', 'ventas', 'mermas', 'cortez'];
+    if (!cajeroAllowedTabs.includes(activeTab)) {
+      setActiveTab('ventas');
     }
+
+    registrarAuditLog('Modo Cajero Activado', 'Seguridad', `Terminal cambiada a Modo Cajero (${cajeroActivo})`);
+    setSaveStatus(`Modo Cajero activado. Métricas, finanzas y ajustes protegidos.`);
+    setTimeout(() => setSaveStatus(null), 3500);
+  };
+
+  // Handler Just-In-Time para botón "Cajero" (Requisito 1)
+  const handleClickCambiarACajero = () => {
+    // Si NO tiene PIN guardado: abre modal obligatorio
+    if (!adminPin || !/^\d{4}$/.test(adminPin)) {
+      setJitPin('');
+      setJitConfirmPin('');
+      setJitError(null);
+      setModalCrearPinJIT(true);
+      return;
+    }
+    // SI YA TIENE PIN: cambia directamente a Modo Cajero de forma inmediata
+    activarModoCajeroDirecto();
+  };
+
+  // Guardar PIN Just-In-Time y cambiar a cajero
+  const handleGuardarPinJIT = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setJitError(null);
+
+    const pinLimpio = jitPin.trim();
+    const confirmLimpio = jitConfirmPin.trim();
+
+    if (!/^\d{4}$/.test(pinLimpio)) {
+      setJitError('El PIN debe contener exactamente 4 dígitos numéricos.');
+      return;
+    }
+
+    if (pinLimpio !== confirmLimpio) {
+      setJitError('Los campos de PIN no coinciden. Escribe el mismo PIN en ambos campos.');
+      return;
+    }
+
+    await persistAdminPin(pinLimpio);
+    registrarAuditLog('PIN de Administrador Creado', 'Seguridad', 'PIN de 4 dígitos creado Just-In-Time');
+    setModalCrearPinJIT(false);
+    activarModoCajeroDirecto();
+    setSaveStatus('PIN de Administrador guardado con éxito. Modo Cajero activo.');
+    setTimeout(() => setSaveStatus(null), 3500);
+  };
+
+  // Enviar correo de recuperación de PIN mediante Supabase Auth (Requisito 4)
+  const handleEnviarRecuperacionPin = async (destinatarioEmail?: string) => {
+    const emailTarget = destinatarioEmail?.trim() || profile.email?.trim();
+    if (!emailTarget || !emailTarget.includes('@')) {
+      setShowPromptEmailRecuperacion(true);
+      return;
+    }
+
+    setEnviandoRecuperacionEmail(true);
+    try {
+      const supabase = createClient();
+      const redirectUrl = `${window.location.origin}/auth/callback?next=/reset-pin`;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(emailTarget, {
+        redirectTo: redirectUrl,
+      });
+
+      if (error) {
+        console.error('Aviso Supabase Auth recuperacion:', error.message);
+      }
+
+      setShowPromptEmailRecuperacion(false);
+      setShowPinModal(false);
+      setPendingTab(null);
+      setPinError(false);
+
+      setSaveStatus(`Se ha enviado un enlace de verificación a tu correo electrónico (${emailTarget}).`);
+      registrarAuditLog('Solicitud de Recuperación de PIN', 'Seguridad', `Enlace de verificación enviado a ${emailTarget}`);
+      setTimeout(() => setSaveStatus(null), 6000);
+    } catch (err: any) {
+      console.error(err);
+      setSaveStatus('Error al enviar correo de recuperación. Inténtalo de nuevo.');
+      setTimeout(() => setSaveStatus(null), 4000);
+    } finally {
+      setEnviandoRecuperacionEmail(false);
+    }
+  };
+
+  // Confirmar inicio de turno de cajero
+  const handleConfirmarCajeroActivo = (nombreCajero: string) => {
+    const nombreLimpio = sanitizeInput(nombreCajero) || 'Caja General';
+    setCajeroActivo(nombreLimpio);
+    setModoRol('cajero');
+    localStorage.setItem('nexo_modo_rol', 'cajero');
+    localStorage.setItem('nexo_cajero_activo', nombreLimpio);
+    setModalSeleccionCajero(false);
+
+    const cajeroAllowedTabs: TabSection[] = ['inicio', 'productos', 'inventario', 'ventas', 'mermas', 'cortez'];
+    if (!cajeroAllowedTabs.includes(activeTab)) {
+      setActiveTab('ventas');
+    }
+
+    registrarAuditLog('Inicio de Turno de Cajero', 'Seguridad', `Cajero "${nombreLimpio}" tomó control de la terminal de cobro`);
+    setSaveStatus(`Modo Cajero activado para "${nombreLimpio}". Métricas y ajustes bloqueados.`);
+    setTimeout(() => setSaveStatus(null), 3500);
+  };
+
+  // Registrar Corte Z (Arqueo y Cierre de Caja)
+  const handleRegistrarCorteZ = (e: React.FormEvent) => {
+    e.preventDefault();
+    const fondo = parseFloat(corteZForm.montoInicial) || 0;
+    const contado = parseFloat(corteZForm.efectivoReal) || 0;
+    const esperado = fondo + ventasEfectivoTotal;
+    const dif = contado - esperado;
+    const timestamp = formatearTimestampCompleto();
+    const responsable = modoRol === 'cajero' ? cajeroActivo : 'Administrador';
+
+    const nuevoCorte: CorteZ = {
+      id: `cz_${Date.now()}`,
+      fechaHora: timestamp,
+      cajeroNombre: responsable,
+      montoInicial: fondo,
+      ventasEfectivo: ventasEfectivoTotal,
+      ventasTarjeta: ventasTarjetaTotal,
+      totalEsperado: esperado,
+      efectivoReal: contado,
+      diferencia: dif,
+      notas: sanitizeInput(corteZForm.notas) || 'Sin observaciones.',
+    };
+
+    const updatedCortes = [nuevoCorte, ...cortesZ];
+    saveCortesZToStorage(updatedCortes);
+    registrarAuditLog(
+      'Cierre de Caja (Corte Z)',
+      'Caja',
+      `Corte Z por ${responsable}. Fondo: $${fondo}, Ventas Efvo: $${ventasEfectivoTotal}, Esperado: $${esperado}, Contado: $${contado}, Dif: $${dif >= 0 ? '+' : ''}${dif} MXN`
+    );
+
+    setCorteTicketModal(nuevoCorte);
+    setCorteZForm((prev) => ({ ...prev, efectivoReal: '', notas: '' }));
+    setSaveStatus(`Corte Z registrado exitosamente para ${responsable}.`);
+    setTimeout(() => setSaveStatus(null), 3500);
+  };
+
+  // Crear nuevo cajero
+  const handleCrearCajero = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevoCajeroForm.nombre || nuevoCajeroForm.pin.length !== 4) return;
+
+    const nombreLimpio = sanitizeInput(nuevoCajeroForm.nombre);
+    const turnoLimpio = sanitizeInput(nuevoCajeroForm.turno) || 'General';
+
+    const nuevo: Cajero = {
+      id: `caj_${Date.now()}`,
+      nombre: nombreLimpio,
+      pin: nuevoCajeroForm.pin,
+      turno: turnoLimpio,
+      activo: true,
+    };
+
+    const updated = [...cajeros, nuevo];
+    saveCajerosToStorage(updated);
+    setNuevoCajeroForm({ nombre: '', pin: '', turno: 'Matutino (08:00 - 15:00)' });
+    setModalNuevoCajero(false);
+
+    registrarAuditLog('Cajero Creado', 'Personal', `Nuevo cajero: ${nuevo.nombre} (Turno: ${nuevo.turno})`);
+    setSaveStatus(`Cajero "${nuevo.nombre}" registrado con éxito.`);
+    setTimeout(() => setSaveStatus(null), 3000);
+  };
+
+  // Eliminar cajero
+  const handleEliminarCajero = (id: string) => {
+    const caj = cajeros.find((c) => c.id === id);
+    const updated = cajeros.filter((c) => c.id !== id);
+    saveCajerosToStorage(updated);
+    if (caj) {
+      registrarAuditLog('Cajero Removido', 'Personal', `Cajero eliminado: ${caj.nombre}`);
+    }
+  };
+
+  // Generador de PIN seguro aleatorio para formulario en Ajustes
+  const handleGenerarPinAleatorioAjustes = () => {
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    setNuevoPinAjustes(pin);
+    setConfirmarPinAjustes(pin);
+    setPinAjustesError(null);
+  };
+
+  // Handler para actualizar PIN desde Ajustes (Requisito 3)
+  const handleActualizarPinAjustes = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinAjustesError(null);
+    setPinAjustesSuccess(null);
+
+    // Si ya existe un PIN previo, validar que haya ingresado el PIN actual correcto
+    if (adminPin && pinActualAjustes !== adminPin) {
+      setPinAjustesError('El PIN actual no es correcto. Ingresa tu clave vigente.');
+      return;
+    }
+
+    const nuevoLimpio = nuevoPinAjustes.trim();
+    const confirmLimpio = confirmarPinAjustes.trim();
+
+    if (!/^\d{4}$/.test(nuevoLimpio)) {
+      setPinAjustesError('El nuevo PIN debe contener exactamente 4 dígitos numéricos.');
+      return;
+    }
+
+    if (nuevoLimpio !== confirmLimpio) {
+      setPinAjustesError('El nuevo PIN y su confirmación no coinciden.');
+      return;
+    }
+
+    await persistAdminPin(nuevoLimpio);
+    registrarAuditLog('PIN Actualizado en Ajustes', 'Seguridad', 'El Administrador actualizó su PIN de seguridad desde Ajustes');
+
+    setPinActualAjustes('');
+    setNuevoPinAjustes('');
+    setConfirmarPinAjustes('');
+    setPinAjustesSuccess('PIN de Administrador actualizado con éxito.');
+    setSaveStatus('PIN de Administrador actualizado exitosamente.');
+    setTimeout(() => {
+      setPinAjustesSuccess(null);
+      setSaveStatus(null);
+    }, 4000);
   };
 
   // Generador de texto para Orden de Compra Sugerida
@@ -982,6 +1454,39 @@ Instrucciones:
                 <Lock className="w-3.5 h-3.5 text-amber-400" />
               )}
             </button>
+
+            {/* Módulo: Cierre de Caja (Corte Z) */}
+            <button
+              onClick={() => handleTabClick('cortez')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'cortez'
+                  ? 'bg-[#22E6D6]/15 border border-[#22E6D6] text-[#22E6D6] shadow-[0_0_20px_rgba(34,230,214,0.25)]'
+                  : 'text-[#8998C2] hover:bg-white/5 hover:text-[#F3F6FC]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Receipt className="w-4 h-4" />
+                <span>Cierre de Caja (Corte Z)</span>
+              </div>
+            </button>
+
+            {/* Módulo: Registro de Auditoría (Audit Logs) */}
+            <button
+              onClick={() => handleTabClick('auditoria')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'auditoria'
+                  ? 'bg-[#22E6D6]/15 border border-[#22E6D6] text-[#22E6D6] shadow-[0_0_20px_rgba(34,230,214,0.25)]'
+                  : 'text-[#8998C2] hover:bg-white/5 hover:text-[#F3F6FC]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-4 h-4" />
+                <span>Auditoría (Audit Logs)</span>
+              </div>
+              {modoRol === 'cajero' && (
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+              )}
+            </button>
           </nav>
         </div>
 
@@ -997,7 +1502,7 @@ Instrucciones:
                   : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
               }`}>
                 {modoRol === 'admin' ? <ShieldCheck className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                {modoRol === 'admin' ? 'Admin' : 'Cajero'}
+                {modoRol === 'admin' ? 'Admin' : cajeroActivo}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#0A1730] rounded-xl border border-white/5">
@@ -1019,15 +1524,7 @@ Instrucciones:
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setModoRol('cajero');
-                  localStorage.setItem('nexo_modo_rol', 'cajero');
-                  if (activeTab === 'metricas' || activeTab === 'proveedores' || activeTab === 'ajustes') {
-                    setActiveTab('ventas');
-                  }
-                  setSaveStatus('Modo Cajero activado. Métricas financieras y ajustes protegidos.');
-                  setTimeout(() => setSaveStatus(null), 3000);
-                }}
+                onClick={handleClickCambiarACajero}
                 className={`py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                   modoRol === 'cajero' ? 'bg-amber-400 text-[#050B1F] shadow' : 'text-[#8998C2] hover:text-[#F3F6FC]'
                 }`}
@@ -1065,8 +1562,8 @@ Instrucciones:
             </div>
             <div className="overflow-hidden">
               <span className="text-xs font-bold text-[#F3F6FC] block truncate">{profile.nombre}</span>
-              <span className="text-[10px] text-emerald-400 font-medium block truncate">
-                ● {modoRol === 'admin' ? 'Administrador' : 'Cajero Activo'}
+              <span className={`text-[10px] font-medium block truncate ${modoRol === 'admin' ? 'text-emerald-400' : 'text-amber-300'}`}>
+                ● {modoRol === 'admin' ? 'Administrador' : cajeroActivo}
               </span>
             </div>
           </div>
@@ -2236,6 +2733,384 @@ Instrucciones:
           )}
 
           {/* ========================================================
+              MÓDULO: CIERRE DE CAJA (CORTE Z)
+              ======================================================== */}
+          {activeTab === 'cortez' && (
+            <div className="max-w-5xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div>
+                  <h3 className="text-xl font-bold text-[#F3F6FC] flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-[#22E6D6]" /> Cierre de Caja & Arqueo de Efectivo (Corte Z)
+                  </h3>
+                  <p className="text-xs text-[#8998C2] mt-0.5">
+                    Verifica el efectivo en caja, compara ventas en efectivo vs digitales y genera el comprobante oficial de entrega de turno.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-[#8998C2]">
+                    Responsable: <strong className="text-[#22E6D6]">{modoRol === 'cajero' ? cajeroActivo : 'Administración'}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Tarjetas KPI de ventas del turno */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-5 rounded-2xl border border-white/10 bg-[#0A1730]">
+                  <div className="flex items-center justify-between text-xs text-[#8998C2] mb-1">
+                    <span>Ventas en Efectivo</span>
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <p className="text-2xl font-black text-emerald-400 font-mono">${ventasEfectivoTotal} MXN</p>
+                  <span className="text-[10px] text-[#8998C2]">{ventasEfectivoCount} transacciones en efectivo</span>
+                </div>
+
+                <div className="p-5 rounded-2xl border border-white/10 bg-[#0A1730]">
+                  <div className="flex items-center justify-between text-xs text-[#8998C2] mb-1">
+                    <span>Tarjeta / Mercado Pago</span>
+                    <ShoppingCart className="w-4 h-4 text-[#22E6D6]" />
+                  </div>
+                  <p className="text-2xl font-black text-[#22E6D6] font-mono">${ventasTarjetaTotal} MXN</p>
+                  <span className="text-[10px] text-[#8998C2]">{ventasTarjetaCount} cobros digitales</span>
+                </div>
+
+                <div className="p-5 rounded-2xl border border-white/10 bg-[#0A1730]">
+                  <div className="flex items-center justify-between text-xs text-[#8998C2] mb-1">
+                    <span>Total Ventas Turno</span>
+                    <TrendingUp className="w-4 h-4 text-cyan-300" />
+                  </div>
+                  <p className="text-2xl font-black text-[#F3F6FC] font-mono">${totalIngresos} MXN</p>
+                  <span className="text-[10px] text-[#8998C2]">{ventas.length} ventas acumuladas</span>
+                </div>
+              </div>
+
+              {/* Formulario de Arqueo y Previsualización del Ticket */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Columna Izquierda: Formulario de Arqueo */}
+                <div className="lg:col-span-2 p-6 rounded-3xl border border-white/10 bg-[#0A1730] space-y-4">
+                  <h4 className="text-sm font-bold text-[#F3F6FC] flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-[#22E6D6]" /> Formulario de Arqueo Físico
+                  </h4>
+
+                  <form onSubmit={handleRegistrarCorteZ} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs text-[#8998C2] block mb-1">Fondo de Caja Inicial ($ MXN)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          placeholder="500.00"
+                          value={corteZForm.montoInicial}
+                          onChange={(e) => setCorteZForm({ ...corteZForm, montoInicial: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs sm:text-sm text-[#F3F6FC] font-mono focus:border-[#22E6D6] focus:outline-none"
+                        />
+                        <span className="text-[10px] text-[#8998C2]">Efectivo de cambio al iniciar la jornada</span>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[#8998C2] block mb-1">Efectivo Físico Contado ($ MXN)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          placeholder="0.00"
+                          value={corteZForm.efectivoReal}
+                          onChange={(e) => setCorteZForm({ ...corteZForm, efectivoReal: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs sm:text-sm text-[#F3F6FC] font-mono focus:border-[#22E6D6] focus:outline-none"
+                        />
+                        <span className="text-[10px] text-[#8998C2]">Total de billetes y monedas en el cajón</span>
+                      </div>
+                    </div>
+
+                    {/* Cálculo dinámico de diferencia */}
+                    {corteZForm.efectivoReal !== '' && (
+                      (() => {
+                        const fondo = parseFloat(corteZForm.montoInicial) || 0;
+                        const contado = parseFloat(corteZForm.efectivoReal) || 0;
+                        const esperado = fondo + ventasEfectivoTotal;
+                        const dif = contado - esperado;
+                        return (
+                          <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between ${
+                            dif === 0
+                              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                              : dif > 0
+                              ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
+                              : 'border-red-500/40 bg-red-500/10 text-red-300'
+                          }`}>
+                            <div>
+                              <span className="block text-[10px] uppercase tracking-wider opacity-85">
+                                Esperado: Fondo (${fondo}) + Ventas Efvo (${ventasEfectivoTotal}) = ${esperado} MXN
+                              </span>
+                              <span className="text-sm font-extrabold">
+                                {dif === 0
+                                  ? '✅ Arqueo Exacto (Caja sin diferencias)'
+                                  : dif > 0
+                                  ? `🟢 Sobrante en Caja: +$${dif.toFixed(2)} MXN`
+                                  : `🔴 Faltante en Caja: -$${Math.abs(dif).toFixed(2)} MXN`}
+                              </span>
+                            </div>
+                            <span className="font-mono text-base font-black">
+                              {dif >= 0 ? `+$${dif.toFixed(2)}` : `-$${Math.abs(dif).toFixed(2)}`}
+                            </span>
+                          </div>
+                        );
+                      })()
+                    )}
+
+                    <div>
+                      <label className="text-xs text-[#8998C2] block mb-1">Notas u Observaciones del Cierre</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Billetes de $500 resguardados en caja fuerte..."
+                        value={corteZForm.notas}
+                        onChange={(e) => setCorteZForm({ ...corteZForm, notas: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs sm:text-sm text-[#F3F6FC] focus:border-[#22E6D6] focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                      <button
+                        type="submit"
+                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#22E6D6] to-cyan-400 text-[#050B1F] font-bold text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(34,230,214,0.3)] hover:shadow-[0_0_30px_rgba(34,230,214,0.5)] transition-all cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>Guardar y Cerrar Turno (Corte Z)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="px-5 py-3 rounded-xl border border-white/10 hover:border-white/20 bg-white/5 text-xs text-[#F3F6FC] font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      >
+                        <Printer className="w-4 h-4 text-[#22E6D6]" />
+                        <span>Imprimir / PDF</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Columna Derecha: Simulación de Ticket Térmico en Vivo */}
+                <div className="p-6 rounded-3xl border border-white/10 bg-[#050B1F] flex flex-col justify-between font-mono text-xs shadow-inner">
+                  <div className="space-y-1.5 border-b border-dashed border-white/20 pb-4 text-center">
+                    <p className="font-extrabold text-[#22E6D6] text-sm uppercase">{profile.empresa || 'NEXO.IA COMMERCE'}</p>
+                    <p className="text-[10px] text-[#8998C2]">COMPROBANTE DE CORTE Z</p>
+                    <p className="text-[10px] text-[#8998C2]">{formatearTimestampCompleto()}</p>
+                    <p className="text-[10px] text-[#22E6D6]">Cajero: {modoRol === 'cajero' ? cajeroActivo : 'Administrador'}</p>
+                  </div>
+
+                  <div className="py-4 space-y-2 text-[11px] border-b border-dashed border-white/20">
+                    <div className="flex justify-between">
+                      <span className="text-[#8998C2]">Fondo Inicial:</span>
+                      <span>${parseFloat(corteZForm.montoInicial) || 0} MXN</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#8998C2]">Ventas Efectivo:</span>
+                      <span className="text-emerald-400">+${ventasEfectivoTotal} MXN</span>
+                    </div>
+                    <div className="flex justify-between font-bold pt-1 border-t border-white/10">
+                      <span className="text-[#8998C2]">Total Esperado:</span>
+                      <span>${(parseFloat(corteZForm.montoInicial) || 0) + ventasEfectivoTotal} MXN</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span className="text-[#8998C2]">Efectivo Contado:</span>
+                      <span className="text-[#22E6D6]">${parseFloat(corteZForm.efectivoReal) || 0} MXN</span>
+                    </div>
+                    <div className="flex justify-between text-[10px] text-[#8998C2] pt-1">
+                      <span>Ventas Tarjeta:</span>
+                      <span>${ventasTarjetaTotal} MXN</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 text-center text-[10px] text-[#8998C2] space-y-3">
+                    <p className="italic">Entrega y conformidad de turno operativo</p>
+                    <div className="border-t border-white/20 pt-2 mx-6 text-center text-[#8998C2]">
+                      Firma del Cajero
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Historial de Cortes Z Guardados */}
+              <div className="p-6 rounded-3xl border border-white/10 bg-[#0A1730] space-y-4">
+                <h4 className="text-sm font-bold text-[#F3F6FC] flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-[#22E6D6]" /> Historial de Cortes de Caja Registrados
+                </h4>
+
+                {cortesZ.length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-white/5 bg-[#050B1F]/60 text-center text-xs text-[#8998C2]">
+                    No hay cortes Z registrados aún. Al cerrar el turno con el formulario superior aparecerán aquí.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-white/10 text-[10px] uppercase font-bold text-[#8998C2]">
+                        <tr>
+                          <th className="pb-3">Fecha y Hora</th>
+                          <th className="pb-3">Cajero / Turno</th>
+                          <th className="pb-3">Fondo Inicial</th>
+                          <th className="pb-3">Ventas Efvo</th>
+                          <th className="pb-3">Esperado</th>
+                          <th className="pb-3">Contado</th>
+                          <th className="pb-3">Diferencia</th>
+                          <th className="pb-3">Ticket</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 font-mono">
+                        {cortesZ.map((c) => (
+                          <tr key={c.id} className="hover:bg-white/5">
+                            <td className="py-3 font-sans text-[#F3F6FC]">{c.fechaHora}</td>
+                            <td className="py-3 font-sans text-[#22E6D6] font-semibold">{c.cajeroNombre}</td>
+                            <td className="py-3">${c.montoInicial}</td>
+                            <td className="py-3 text-emerald-400">${c.ventasEfectivo}</td>
+                            <td className="py-3 font-bold">${c.totalEsperado}</td>
+                            <td className="py-3 text-[#22E6D6]">${c.efectivoReal}</td>
+                            <td className="py-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                c.diferencia === 0
+                                  ? 'bg-emerald-500/20 text-emerald-400'
+                                  : c.diferencia > 0
+                                  ? 'bg-cyan-500/20 text-cyan-300'
+                                  : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {c.diferencia >= 0 ? `+$${c.diferencia}` : `-$${Math.abs(c.diferencia)}`}
+                              </span>
+                            </td>
+                            <td className="py-3 font-sans">
+                              <button
+                                onClick={() => setCorteTicketModal(c)}
+                                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-[#22E6D6]/20 text-[#22E6D6] text-[10px] font-bold border border-[#22E6D6]/30 cursor-pointer"
+                              >
+                                Ver Ticket
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              MÓDULO: REGISTRO DE AUDITORÍA (AUDIT LOGS)
+              ======================================================== */}
+          {activeTab === 'auditoria' && (
+            <div className="max-w-5xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div>
+                  <h3 className="text-xl font-bold text-[#F3F6FC] flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-[#22E6D6]" /> Registro de Auditoría & Seguridad (Audit Logs)
+                  </h3>
+                  <p className="text-xs text-[#8998C2] mt-0.5">
+                    Historial inmutable de operaciones realizadas en el sistema (Ventas, Mermas, Gastos, Inventario, Caja y Seguridad).
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-[#22E6D6]/10 text-[#22E6D6] border border-[#22E6D6]/30 text-xs font-mono font-bold self-start sm:self-auto">
+                  {auditLogs.length} eventos registrados
+                </span>
+              </div>
+
+              {/* Filtros de búsqueda y módulo */}
+              <div className="p-4 rounded-2xl border border-white/10 bg-[#0A1730] flex flex-col sm:flex-row gap-3 items-center justify-between">
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 text-[#8998C2] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por usuario, acción o detalle..."
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 rounded-xl border border-white/10 bg-[#050B1F] text-xs text-[#F3F6FC] focus:border-[#22E6D6] focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                  {['todos', 'Ventas', 'Mermas', 'Inventario', 'Finanzas', 'Caja', 'Seguridad', 'Personal'].map((mod) => (
+                    <button
+                      key={mod}
+                      onClick={() => setAuditFilterModulo(mod)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        auditFilterModulo === mod
+                          ? 'bg-[#22E6D6] text-[#050B1F]'
+                          : 'bg-[#050B1F] text-[#8998C2] hover:text-[#F3F6FC] border border-white/5'
+                      }`}
+                    >
+                      {mod === 'todos' ? 'Todos los Módulos' : mod}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tabla de Auditoría */}
+              <div className="p-6 rounded-3xl border border-white/10 bg-[#0A1730]">
+                {auditLogs.length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-white/5 bg-[#050B1F]/60 text-center text-xs text-[#8998C2]">
+                    Aún no hay eventos registrados. Las ventas, mermas, gastos o cambios de inventario quedarán grabados aquí de forma automática.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-white/10 text-[10px] uppercase font-bold text-[#8998C2]">
+                        <tr>
+                          <th className="pb-3">Timestamp Exacto</th>
+                          <th className="pb-3">Usuario / Cajero</th>
+                          <th className="pb-3">Módulo</th>
+                          <th className="pb-3">Acción</th>
+                          <th className="pb-3">Detalle Técnico</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {auditLogs
+                          .filter((log) => {
+                            const matchMod =
+                              auditFilterModulo === 'todos' || log.modulo.toLowerCase() === auditFilterModulo.toLowerCase();
+                            const matchSearch =
+                              !auditSearch ||
+                              log.usuario.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                              log.accion.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                              log.detalles.toLowerCase().includes(auditSearch.toLowerCase());
+                            return matchMod && matchSearch;
+                          })
+                          .map((log) => (
+                            <tr key={log.id} className="hover:bg-white/5">
+                              <td className="py-3 text-[#8998C2] font-mono text-[11px] whitespace-nowrap">
+                                <span className="flex items-center gap-1.5">
+                                  <Clock className="w-3 h-3 text-[#22E6D6]" /> {log.timestamp}
+                                </span>
+                              </td>
+                              <td className="py-3 font-semibold text-[#F3F6FC] whitespace-nowrap">
+                                {log.usuario}
+                              </td>
+                              <td className="py-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  log.modulo === 'Ventas'
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : log.modulo === 'Mermas'
+                                    ? 'bg-red-500/20 text-red-300'
+                                    : log.modulo === 'Seguridad'
+                                    ? 'bg-purple-500/20 text-purple-300'
+                                    : log.modulo === 'Caja'
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : 'bg-[#22E6D6]/20 text-[#22E6D6]'
+                                }`}>
+                                  {log.modulo}
+                                </span>
+                              </td>
+                              <td className="py-3 font-bold text-[#22E6D6]">{log.accion}</td>
+                              <td className="py-3 text-[#8998C2] max-w-xs sm:max-w-md truncate" title={log.detalles}>
+                                {log.detalles}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
               MÓDULO F: AJUSTES DE USUARIO
               ======================================================== */}
           {activeTab === 'ajustes' && (
@@ -2338,45 +3213,163 @@ Instrucciones:
                 </div>
               </form>
 
-              {/* ---- Control de Seguridad: PIN de Administrador (Módulo 4) ---- */}
+              {/* ---- Sub-sección: Gestión de Cajeros y Empleados (Módulo 2.B) ---- */}
+              <div className="p-6 rounded-3xl border border-white/10 bg-[#0A1730] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#F3F6FC] flex items-center gap-2">
+                      <User className="w-4 h-4 text-[#22E6D6]" /> Gestión de Cajeros y Personal
+                    </h4>
+                    <p className="text-xs text-[#8998C2] mt-0.5">
+                      Crea perfiles y turnos para el personal de caja asignándoles un PIN rápido de cobro.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setModalNuevoCajero(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 text-[#050B1F] text-xs font-bold shadow-[0_0_15px_rgba(34,230,214,0.3)] transition-all cursor-pointer self-start sm:self-auto"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Registrar Cajero</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {cajeros.map((caj) => (
+                    <div key={caj.id} className="p-4 rounded-2xl border border-white/10 bg-[#050B1F] flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-[#F3F6FC]">{caj.nombre}</span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        </div>
+                        <p className="text-[11px] text-[#8998C2] mt-0.5">Turno: {caj.turno}</p>
+                        <p className="text-[10px] text-amber-300 font-mono mt-1">PIN: ••••</p>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                        <span className="text-[10px] text-emerald-400 font-medium">Activo</span>
+                        <button
+                          type="button"
+                          onClick={() => handleEliminarCajero(caj.id)}
+                          className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
+                          title="Eliminar cajero"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ---- Control de Seguridad: PIN de Administrador (Requisito 3) ---- */}
               <div className="p-6 rounded-3xl border border-white/10 bg-[#0A1730] space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <div>
                     <h4 className="text-sm font-bold text-[#F3F6FC] flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-[#22E6D6]" /> Seguridad y Clave de Administrador
+                      <Lock className="w-4 h-4 text-[#22E6D6]" /> Seguridad y PIN de Administrador
                     </h4>
                     <p className="text-xs text-[#8998C2] mt-0.5">
-                      Protege tus métricas financieras, utilidades netas, directorio de proveedores y ajustes para el personal en Modo Cajero.
+                      Protege tus métricas financieras, utilidades netas, directorio de proveedores y ajustes cuando el personal opere en Modo Cajero.
                     </p>
                   </div>
-                  <span className="px-2.5 py-1 rounded-lg bg-[#22E6D6]/10 text-[#22E6D6] font-mono text-xs font-bold border border-[#22E6D6]/30">
-                    PIN Activo: ••••
+                  <span className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold border ${
+                    adminPin
+                      ? 'bg-[#22E6D6]/10 text-[#22E6D6] border-[#22E6D6]/30'
+                      : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                  }`}>
+                    {adminPin ? 'PIN Activo: ••••' : 'Sin PIN configurado'}
                   </span>
                 </div>
 
-                <form onSubmit={handleCambiarPin} className="flex flex-col sm:flex-row items-start sm:items-end gap-3 max-w-lg">
-                  <div className="flex-1 w-full">
-                    <label className="text-xs text-[#8998C2] block mb-1">Nuevo PIN de Seguridad (4 dígitos)</label>
-                    <input
-                      type="password"
-                      maxLength={4}
-                      placeholder="Ej. 5821"
-                      value={nuevoPin}
-                      onChange={(e) => setNuevoPin(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs sm:text-sm text-[#F3F6FC] tracking-widest font-mono focus:border-[#22E6D6] focus:outline-none"
-                    />
+                {pinAjustesError && (
+                  <div className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{pinAjustesError}</span>
                   </div>
-                  <button
-                    type="submit"
-                    disabled={nuevoPin.length < 4}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 disabled:opacity-50 text-[#050B1F] font-bold text-xs cursor-pointer shadow-md shadow-[#22E6D6]/20 transition-all shrink-0"
-                  >
-                    Actualizar PIN
-                  </button>
+                )}
+
+                {pinAjustesSuccess && (
+                  <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{pinAjustesSuccess}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleActualizarPinAjustes} className="space-y-4 max-w-xl">
+                  {adminPin && (
+                    <div>
+                      <label className="text-xs text-[#8998C2] block mb-1">PIN Actual de Administrador</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        required
+                        placeholder="••••"
+                        value={pinActualAjustes}
+                        onChange={(e) => {
+                          setPinActualAjustes(e.target.value.replace(/[^0-9]/g, ''));
+                          setPinAjustesError(null);
+                        }}
+                        className="w-full sm:w-64 px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs sm:text-sm text-[#22E6D6] tracking-widest font-mono focus:border-[#22E6D6] focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs text-[#8998C2]">Nuevo PIN (4 dígitos)</label>
+                        <button
+                          type="button"
+                          onClick={handleGenerarPinAleatorioAjustes}
+                          className="text-[10px] text-[#22E6D6] hover:underline font-semibold cursor-pointer"
+                        >
+                          Sugerir PIN aleatorio
+                        </button>
+                      </div>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        required
+                        placeholder="••••"
+                        value={nuevoPinAjustes}
+                        onChange={(e) => {
+                          setNuevoPinAjustes(e.target.value.replace(/[^0-9]/g, ''));
+                          setPinAjustesError(null);
+                        }}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs sm:text-sm text-[#22E6D6] tracking-widest font-mono focus:border-[#22E6D6] focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[#8998C2] block mb-1">Confirmar Nuevo PIN</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        required
+                        placeholder="••••"
+                        value={confirmarPinAjustes}
+                        onChange={(e) => {
+                          setConfirmarPinAjustes(e.target.value.replace(/[^0-9]/g, ''));
+                          setPinAjustesError(null);
+                        }}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs sm:text-sm text-[#22E6D6] tracking-widest font-mono focus:border-[#22E6D6] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between">
+                    <p className="text-[11px] text-[#8998C2]">
+                      Tu PIN se sincroniza con tu cuenta de Supabase y bloquea el panel en Modo Cajero.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={nuevoPinAjustes.length !== 4 || confirmarPinAjustes.length !== 4}
+                      className="px-5 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 disabled:opacity-50 text-[#050B1F] font-bold text-xs cursor-pointer shadow-md shadow-[#22E6D6]/20 transition-all shrink-0"
+                    >
+                      Actualizar PIN
+                    </button>
+                  </div>
                 </form>
-                <p className="text-[10px] text-[#8998C2]">
-                  * El PIN por defecto es <strong>1234</strong>. Cámbialo para restringir el acceso a métricas de utilidades y finanzas.
-                </p>
               </div>
 
               {/* ===================================================
@@ -2905,13 +3898,13 @@ Instrucciones:
       )}
 
       {/* ========================================================
-          MODAL: PIN DE ACCESO ADMINISTRADOR (MÓDULO 4)
+          MODAL 1: PIN DE ACCESO ADMINISTRADOR (DESBLOQUEO)
           ======================================================== */}
       {showPinModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050B1F]/85 backdrop-blur-xl">
           <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0A1730] p-6 text-center text-[#F3F6FC] shadow-[0_20px_60px_rgba(5,11,31,0.95)]">
             <button
-              onClick={() => { setShowPinModal(false); setPendingTab(null); }}
+              onClick={() => { setShowPinModal(false); setPendingTab(null); setPinError(false); }}
               className="absolute top-4 right-4 p-2 rounded-xl border border-white/10 bg-white/5 text-[#8998C2] hover:text-[#F3F6FC]"
             >
               <X className="w-4 h-4" />
@@ -2944,26 +3937,451 @@ Instrucciones:
 
               {pinError && (
                 <p className="text-xs text-red-400 font-semibold">
-                  PIN incorrecto. (PIN por defecto: 1234)
+                  PIN incorrecto. Ingresa el PIN configurado por el Administrador.
                 </p>
               )}
 
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => { setShowPinModal(false); setPendingTab(null); }}
+                  onClick={() => { setShowPinModal(false); setPendingTab(null); setPinError(false); }}
                   className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs text-[#8998C2] hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 text-[#050B1F] font-bold text-xs shadow-md shadow-[#22E6D6]/20 cursor-pointer transition-all"
+                  disabled={pinInput.length !== 4}
+                  className="flex-1 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 disabled:opacity-50 text-[#050B1F] font-bold text-xs shadow-md shadow-[#22E6D6]/20 cursor-pointer transition-all"
                 >
                   Desbloquear
                 </button>
               </div>
             </form>
+
+            {/* Enlace de recuperación vía correo electrónico (Requisito 4) */}
+            <div className="pt-3 border-t border-white/5 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (profile.email && profile.email.includes('@')) {
+                    handleEnviarRecuperacionPin(profile.email);
+                  } else {
+                    setEmailRecuperacionInput('');
+                    setShowPromptEmailRecuperacion(true);
+                  }
+                }}
+                disabled={enviandoRecuperacionEmail}
+                className="text-xs text-[#22E6D6] hover:text-cyan-300 font-medium underline inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>{enviandoRecuperacionEmail ? 'Enviando enlace...' : '¿Olvidaste tu PIN?'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL 2: PROMPT CORREO PARA RECUPERACIÓN DE PIN (Requisito 4)
+          ======================================================== */}
+      {showPromptEmailRecuperacion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050B1F]/85 backdrop-blur-xl">
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0A1730] p-6 text-center text-[#F3F6FC] shadow-[0_20px_60px_rgba(5,11,31,0.95)]">
+            <button
+              onClick={() => setShowPromptEmailRecuperacion(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl border border-white/10 bg-white/5 text-[#8998C2] hover:text-[#F3F6FC]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-[#22E6D6]/10 text-[#22E6D6] border border-[#22E6D6]/30 flex items-center justify-center mx-auto mb-3">
+              <Mail className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-black text-[#F3F6FC]">Recuperar PIN de Acceso</h3>
+            <p className="text-xs text-[#8998C2] mt-1 mb-4">
+              Ingresa el correo electrónico registrado de tu empresa para enviarte un enlace de restablecimiento seguro:
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleEnviarRecuperacionPin(emailRecuperacionInput);
+              }}
+              className="space-y-4"
+            >
+              <input
+                type="email"
+                required
+                autoFocus
+                placeholder="tu-correo@empresa.com"
+                value={emailRecuperacionInput}
+                onChange={(e) => setEmailRecuperacionInput(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs text-[#F3F6FC] focus:border-[#22E6D6] focus:outline-none"
+              />
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPromptEmailRecuperacion(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs text-[#8998C2] hover:bg-white/5 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={enviandoRecuperacionEmail || !emailRecuperacionInput.includes('@')}
+                  className="flex-1 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 disabled:opacity-50 text-[#050B1F] font-bold text-xs shadow-md shadow-[#22E6D6]/20 cursor-pointer transition-all"
+                >
+                  {enviandoRecuperacionEmail ? 'Enviando...' : 'Enviar Enlace'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL 3: CREACIÓN DE PIN JUST-IN-TIME (Requisito 1)
+          ======================================================== */}
+      {modalCrearPinJIT && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050B1F]/85 backdrop-blur-xl">
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0A1730] p-6 text-[#F3F6FC] shadow-[0_20px_60px_rgba(5,11,31,0.95)]">
+            <button
+              onClick={() => { setModalCrearPinJIT(false); setJitError(null); }}
+              className="absolute top-4 right-4 p-2 rounded-xl border border-white/10 bg-white/5 text-[#8998C2] hover:text-[#F3F6FC]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-[#22E6D6]/10 text-[#22E6D6] border border-[#22E6D6]/30 flex items-center justify-center mx-auto mb-3">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-black text-[#F3F6FC] text-center">Protege tu Cuenta de Administrador</h3>
+            <p className="text-xs text-[#8998C2] mt-1 mb-4 text-center leading-relaxed">
+              Crea tu PIN de seguridad de 4 dígitos para limitar el acceso a tus empleados.
+            </p>
+
+            {jitError && (
+              <div className="p-3 mb-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{jitError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleGuardarPinJIT} className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-[#8998C2]">Nuevo PIN (4 dígitos)</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pin = Math.floor(1000 + Math.random() * 9000).toString();
+                      setJitPin(pin);
+                      setJitConfirmPin(pin);
+                      setJitError(null);
+                    }}
+                    className="text-[10px] text-[#22E6D6] hover:underline font-semibold cursor-pointer"
+                  >
+                    Sugerir PIN aleatorio
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  maxLength={4}
+                  autoFocus
+                  required
+                  placeholder="••••"
+                  value={jitPin}
+                  onChange={(e) => {
+                    setJitPin(e.target.value.replace(/[^0-9]/g, ''));
+                    setJitError(null);
+                  }}
+                  className="w-full text-center text-xl font-mono tracking-widest px-4 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-[#22E6D6] focus:border-[#22E6D6] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-[#8998C2] block mb-1">Confirmar PIN</label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  placeholder="••••"
+                  value={jitConfirmPin}
+                  onChange={(e) => {
+                    setJitConfirmPin(e.target.value.replace(/[^0-9]/g, ''));
+                    setJitError(null);
+                  }}
+                  className="w-full text-center text-xl font-mono tracking-widest px-4 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-[#22E6D6] focus:border-[#22E6D6] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setModalCrearPinJIT(false); setJitError(null); }}
+                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs text-[#8998C2] hover:bg-white/5 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={jitPin.length !== 4 || jitConfirmPin.length !== 4}
+                  className="flex-1 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 disabled:opacity-50 text-[#050B1F] font-bold text-xs shadow-md shadow-[#22E6D6]/20 cursor-pointer transition-all"
+                >
+                  Guardar PIN y Cambiar a Modo Cajero
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: SELECCIÓN DE CAJERO ACTIVO (Módulo 2.C)
+          ======================================================== */}
+      {modalSeleccionCajero && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050B1F]/85 backdrop-blur-xl">
+          <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#0A1730] p-6 text-[#F3F6FC] shadow-[0_20px_60px_rgba(5,11,31,0.95)]">
+            <button
+              onClick={() => setModalSeleccionCajero(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl border border-white/10 bg-white/5 text-[#8998C2] hover:text-[#F3F6FC]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center justify-center mx-auto mb-3">
+              <User className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-black text-[#F3F6FC] text-center">Seleccionar Cajero de Turno</h3>
+            <p className="text-xs text-[#8998C2] mt-1 mb-5 text-center">
+              ¿Quién tomará la caja en este turno? Solo tendrá acceso a ventas, mermas e inventario.
+            </p>
+
+            <div className="space-y-2">
+              {cajeros.filter((c) => c.activo).map((caj) => (
+                <button
+                  key={caj.id}
+                  type="button"
+                  onClick={() => handleConfirmarCajeroActivo(caj.nombre)}
+                  className="w-full flex items-center justify-between p-4 rounded-2xl border border-white/10 hover:border-amber-400/50 hover:bg-amber-500/5 text-left transition-all cursor-pointer"
+                >
+                  <div>
+                    <span className="font-bold text-sm text-[#F3F6FC] block">{caj.nombre}</span>
+                    <span className="text-[11px] text-[#8998C2]">Turno: {caj.turno}</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-amber-300" />
+                </button>
+              ))}
+
+              {/* Opción de acceso general */}
+              <button
+                type="button"
+                onClick={() => handleConfirmarCajeroActivo('Caja General')}
+                className="w-full flex items-center justify-between p-4 rounded-2xl border border-dashed border-white/10 hover:border-[#22E6D6]/40 hover:bg-[#22E6D6]/5 text-left transition-all cursor-pointer"
+              >
+                <div>
+                  <span className="font-bold text-sm text-[#8998C2] block">Caja General (Sin perfil)</span>
+                  <span className="text-[11px] text-[#8998C2]">Acceso temporal sin cajero asignado</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#22E6D6]" />
+              </button>
+            </div>
+
+            <p className="text-[10px] text-[#8998C2] text-center mt-4">
+              Administra los cajeros en <strong>Ajustes → Gestión de Personal</strong>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: CREAR NUEVO CAJERO (Módulo 2.B)
+          ======================================================== */}
+      {modalNuevoCajero && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050B1F]/85 backdrop-blur-xl">
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0A1730] p-6 text-[#F3F6FC] shadow-[0_20px_60px_rgba(5,11,31,0.95)]">
+            <button
+              onClick={() => setModalNuevoCajero(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl border border-white/10 bg-white/5 text-[#8998C2] hover:text-[#F3F6FC]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-[#22E6D6]/10 text-[#22E6D6] border border-[#22E6D6]/30 flex items-center justify-center mx-auto mb-3">
+              <PlusCircle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-black text-[#F3F6FC] text-center">Registrar Cajero</h3>
+            <p className="text-xs text-[#8998C2] mt-1 mb-5 text-center">
+              Crea el perfil del cajero con su nombre, turno y PIN rápido de acceso a caja.
+            </p>
+
+            <form onSubmit={handleCrearCajero} className="space-y-4">
+              <div>
+                <label className="text-xs text-[#8998C2] block mb-1">Nombre / Identificación del Cajero</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Caja 1 - Turno Mañana"
+                  value={nuevoCajeroForm.nombre}
+                  onChange={(e) => setNuevoCajeroForm({ ...nuevoCajeroForm, nombre: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs text-[#F3F6FC] focus:border-[#22E6D6] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-[#8998C2] block mb-1">Turno Operativo</label>
+                <input
+                  type="text"
+                  placeholder="Ej. Matutino (08:00 - 15:00)"
+                  value={nuevoCajeroForm.turno}
+                  onChange={(e) => setNuevoCajeroForm({ ...nuevoCajeroForm, turno: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-xs text-[#F3F6FC] focus:border-[#22E6D6] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-[#8998C2]">PIN de 4 dígitos del Cajero</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pin = Math.floor(1000 + Math.random() * 9000).toString();
+                      setNuevoCajeroForm({ ...nuevoCajeroForm, pin });
+                    }}
+                    className="text-[10px] text-[#22E6D6] hover:underline font-semibold cursor-pointer"
+                  >
+                    Sugerir PIN aleatorio
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  placeholder="••••"
+                  value={nuevoCajeroForm.pin}
+                  onChange={(e) => setNuevoCajeroForm({ ...nuevoCajeroForm, pin: e.target.value.replace(/[^0-9]/g, '') })}
+                  className="w-full text-center text-xl font-mono tracking-widest px-4 py-2.5 rounded-xl border border-white/10 bg-[#050B1F] text-[#22E6D6] focus:border-[#22E6D6] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNuevoCajero(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs text-[#8998C2] hover:bg-white/5 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!nuevoCajeroForm.nombre || nuevoCajeroForm.pin.length !== 4}
+                  className="flex-1 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 disabled:opacity-50 text-[#050B1F] font-bold text-xs cursor-pointer shadow-md shadow-[#22E6D6]/20 transition-all"
+                >
+                  Guardar Cajero
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: TICKET DE CORTE Z (Vista del comprobante)
+          ======================================================== */}
+      {corteTicketModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050B1F]/85 backdrop-blur-xl">
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#050B1F] p-6 text-[#F3F6FC] shadow-[0_20px_60px_rgba(5,11,31,0.95)] font-mono text-sm">
+            <button
+              onClick={() => setCorteTicketModal(null)}
+              className="absolute top-4 right-4 p-2 rounded-xl border border-white/10 bg-white/5 text-[#8998C2] hover:text-[#F3F6FC]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Ticket térmico */}
+            <div className="text-center border-b border-dashed border-white/20 pb-4 mb-4">
+              <p className="font-extrabold text-[#22E6D6] text-base uppercase">{profile.empresa || 'MI NEGOCIO'}</p>
+              <p className="text-[10px] text-[#8998C2]">COMPROBANTE OFICIAL DE CORTE Z</p>
+              <p className="text-[10px] text-[#8998C2]">{corteTicketModal.fechaHora}</p>
+              <p className="text-[10px] text-amber-300 mt-1">Cajero: {corteTicketModal.cajeroNombre}</p>
+            </div>
+
+            <div className="space-y-2 text-xs border-b border-dashed border-white/20 pb-4 mb-4">
+              <div className="flex justify-between">
+                <span className="text-[#8998C2]">Fondo Inicial:</span>
+                <span>${corteTicketModal.montoInicial} MXN</span>
+              </div>
+              <div className="flex justify-between text-emerald-400">
+                <span>Ventas en Efectivo ({ventasEfectivoCount} tx):</span>
+                <span>+${corteTicketModal.ventasEfectivo} MXN</span>
+              </div>
+              <div className="flex justify-between text-[#22E6D6]">
+                <span>Ventas Tarjeta / Digital:</span>
+                <span>${corteTicketModal.ventasTarjeta} MXN</span>
+              </div>
+              <div className="flex justify-between font-bold border-t border-white/10 pt-2">
+                <span className="text-[#8998C2]">Total Esperado en Caja:</span>
+                <span>${corteTicketModal.totalEsperado} MXN</span>
+              </div>
+              <div className="flex justify-between font-bold">
+                <span className="text-[#8998C2]">Efectivo Contado:</span>
+                <span className={corteTicketModal.diferencia < 0 ? 'text-red-400' : 'text-emerald-400'}>
+                  ${corteTicketModal.efectivoReal} MXN
+                </span>
+              </div>
+              <div className={`flex justify-between font-extrabold text-sm p-2 rounded-xl ${
+                corteTicketModal.diferencia === 0
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : corteTicketModal.diferencia > 0
+                  ? 'bg-cyan-500/15 text-cyan-300'
+                  : 'bg-red-500/15 text-red-400'
+              }`}>
+                <span>DIFERENCIA:</span>
+                <span>
+                  {corteTicketModal.diferencia >= 0
+                    ? `+$${corteTicketModal.diferencia}`
+                    : `-$${Math.abs(corteTicketModal.diferencia)}`} MXN
+                </span>
+              </div>
+            </div>
+
+            {corteTicketModal.notas && (
+              <p className="text-[10px] text-[#8998C2] italic mb-4 text-center">
+                Notas: {corteTicketModal.notas}
+              </p>
+            )}
+
+            <div className="border-t border-white/20 pt-4 text-center text-[10px] text-[#8998C2] space-y-4">
+              <p className="italic">Entrega y conformidad del turno</p>
+              <div className="border-t border-white/10 mx-8 pt-2">Firma del Cajero</div>
+            </div>
+
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => {
+                  const texto = `*CORTE Z — ${profile.empresa || 'NEXO.IA'}*\nFecha: ${corteTicketModal.fechaHora}\nCajero: ${corteTicketModal.cajeroNombre}\n---\nFondo: $${corteTicketModal.montoInicial} MXN\nVentas Efvo: $${corteTicketModal.ventasEfectivo} MXN\nTarjeta: $${corteTicketModal.ventasTarjeta} MXN\nTotal Esperado: $${corteTicketModal.totalEsperado} MXN\nContado: $${corteTicketModal.efectivoReal} MXN\nDIFERENCIA: ${corteTicketModal.diferencia >= 0 ? '+' : '-'}$${Math.abs(corteTicketModal.diferencia)} MXN\n\n_NEXO.IA Enterprise_`;
+                  navigator.clipboard.writeText(texto).then(() => {
+                    setSaveStatus('Ticket copiado al portapapeles.');
+                    setTimeout(() => setSaveStatus(null), 2500);
+                  });
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 bg-white/5 text-xs text-[#22E6D6] font-bold hover:bg-white/10 cursor-pointer transition-all"
+              >
+                <Copy className="w-3.5 h-3.5" /> Copiar
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#22E6D6] hover:bg-cyan-300 text-[#050B1F] font-bold text-xs cursor-pointer transition-all"
+              >
+                <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
+              </button>
+            </div>
           </div>
         </div>
       )}

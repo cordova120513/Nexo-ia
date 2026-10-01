@@ -14,5 +14,9 @@ export async function GET(request: Request) {
     }
   }
 
+  if (next.startsWith('/reset-pin')) {
+    return NextResponse.redirect(`${origin}${next}`)
+  }
+
   return NextResponse.redirect(`${origin}`)
 }

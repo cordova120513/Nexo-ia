@@ -1,13 +1,38 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { checkRateLimit, sanitizeInput } from '@/lib/security';
 
 export async function POST(req: Request) {
   try {
-    const { messages, contextData, systemPrompt: customPrompt } = await req.json();
+    // 1. Rate Limiting por IP/Header para mitigar abusos
+    const forwarded = req.headers.get('x-forwarded-for');
+    const ip = forwarded ? forwarded.split(',')[0].trim() : 'anonymous-client';
+    const rateCheck = checkRateLimit(`chat-${ip}`, 40, 60000); // 40 peticiones por minuto
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          role: 'assistant',
+          content: '⚠️ Has superado el límite de solicitudes por minuto. Por favor, aguarda un momento antes de enviar otra consulta.',
+        },
+        { status: 429 }
+      );
+    }
 
-    const empresaNombre = contextData?.empresa || 'la Pyme';
+    const body = await req.json();
+    const { messages, contextData, systemPrompt: customPrompt } = body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json(
+        { role: 'assistant', content: 'Formato de mensaje inválido.' },
+        { status: 400 }
+      );
+    }
+
+    // Clave de API exclusivamente en servidor
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    const empresaNombre = sanitizeInput(contextData?.empresa || 'la Pyme');
     const ventasTotales = contextData?.totalIngresos ?? 0;
     const mermasTotales = contextData?.totalMermas ?? 0;
     const balanceNeto = contextData?.balanceNeto ?? 0;
